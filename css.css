@@ -1,0 +1,241 @@
+
+.file-input-label {
+    display: inline-block;
+    padding: 10px 15px;
+    background-color: #28a745;
+    color: white;
+    border-radius: 5px;
+    cursor: pointer;
+    margin-right: 10px;
+    transition: background-color 0.3s ease;
+}
+
+.file-input-label:hover {
+    background-color: #218838;
+}
+
+/* Специфичные цвета для разных типов файлов */
+.file-input-label[for="knowledgeBaseFile"] {
+    background-color: #17a2b8;
+}
+
+.file-input-label[for="knowledgeBaseFile"]:hover {
+    background-color: #138496;
+}
+
+.file-input-label[for="patientHistoryFile"] {
+    background-color: #6f42c1;
+}
+
+.file-input-label[for="patientHistoryFile"]:hover {
+    background-color: #5a2d9c;
+}
+
+#analyzeButton {
+    background-color: #fd7e14;
+}
+
+#analyzeButton:hover {
+    background-color: #e56a00;
+}
+
+#results {
+    margin-top: 20px;
+    padding: 15px;
+    background-color: #f8f9fa;
+    border-radius: 5px;
+    border: 1px solid #ddd;
+}
+
+.analysis-result {
+    padding: 10px;
+    margin: 5px 0;
+    background-color: white;
+    border-radius: 4px;
+    border-left: 4px solid #007bff;
+}
+
+.analysis-success {
+    border-left-color: #28a745;
+    background-color: #d4edda;
+}
+
+.analysis-warning {
+    border-left-color: #ffc107;
+    background-color: #fff3cd;
+}
+
+.analysis-error {
+    border-left-color: #dc3545;
+    background-color: #f8d7da;
+}
+
+/* Остальные существующие стили остаются без изменений */
+body {
+    font-family: Arial, sans-serif;
+    background-color: #f9f9f9;
+    margin: 0;
+    padding: 20px;
+}
+
+#app {
+    max-width: 1000px;
+    margin: 0 auto;
+    background: #fff;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+.action-buttons {
+    margin-bottom: 20px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+button {
+    padding: 10px 15px;
+    background-color: #06315e;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+button:hover {
+    background-color: #30363c;
+}
+
+#tabs {
+    width: 100%;
+}
+
+.tab-headers {
+    display: flex;
+    cursor: pointer;
+    background-color: #f1f1f1;
+    padding: 10px;
+    border-radius: 5px;
+}
+
+.tab-header {
+    padding: 10px 20px;
+    border: 1px solid #ccc;
+    margin-right: 5px;
+    background-color: #e7e7e7;
+    border-bottom: none;
+    border-radius: 5px 5px 0 0;
+    transition: background-color 0.3s ease;
+}
+
+.tab-header:hover {
+    background-color: #d1d1d1;
+}
+
+.tab-header.active {
+    background-color: #fff;
+    font-weight: bold;
+}
+
+.tab-contents {
+    border: 2px solid #ccc;
+    border-radius: 0 0 5px 5px;
+    padding: 20px;
+    background-color: #fff;
+}
+
+.nested {
+    margin: 10px 0;
+}
+
+label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: bold;
+}
+
+input[type="number"],
+select,
+input[type="text"] {
+    width: 100%;
+    padding: 10px;
+    margin-bottom: 10px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+}
+
+#notification {
+    margin-top: 10px;
+    font-size: 16px;
+    font-weight: bold;
+}
+
+.collapsible-section {
+    margin-bottom: 15px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    background-color: #f9f9f9;
+}
+
+.section-header {
+    background-color: #4CAF50;
+    color: white;
+    cursor: pointer;
+    padding: 12px;
+    width: 100%;
+    text-align: left;
+    border: none;
+    outline: none;
+    font-size: 16px;
+    transition: 0.4s;
+    border-radius: 5px 5px 0 0;
+}
+
+.section-header:hover {
+    background-color: #7adb7f;
+}
+
+.section-header.active {
+    background-color: #59a05b;
+}
+
+.section-content {
+    padding: 15px;
+    display: none;
+    overflow: hidden;
+    background-color: white;
+    border-radius: 0 0 5px 5px;
+}
+
+.nested {
+    margin-left: 20px;
+    padding: 5px;
+}
+
+.symptom-wrapper {
+    margin-bottom: 10px;
+    padding: 10px;
+    background-color: #f0f0f0;
+    border-radius: 4px;
+}
+
+.characteristics {
+    margin-top: 10px;
+    padding-left: 15px;
+    border-left: 2px solid #385039;
+}
+
+select, input[type="number"], input[type="text"] {
+    padding: 6px 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    margin-bottom: 10px;
+}
+
+h3 {
+    color: #2c3e50;
+    margin: 15px 0 10px 0;
+    font-size: 18px;
+}

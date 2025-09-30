@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Динамический GUI-Движок с Решателем</title>
+    <link rel="stylesheet" href="./css.css">
+</head>
+<body>
+    <div id="app">
+        <h1>Динамический GUI-Движок с Решателем</h1>
+        
+        <div class="action-buttons">
+            <input type="file" id="guiFileInput" accept=".json" />
+            <label for="knowledgeBaseFile" class="file-input-label">
+                📁 Загрузить базу знаний
+                <input type="file" id="knowledgeBaseFile" accept=".json" style="display: none;" />
+            </label>
+            <label for="patientHistoryFile" class="file-input-label">
+                📋 Загрузить историю болезни
+                <input type="file" id="patientHistoryFile" accept=".json" style="display: none;" />
+            </label>
+            <button id="analyzeButton">🔍 Анализировать данные</button>
+        </div>
+        
+        <div id="tabs">
+            <div class="tab-headers"></div>
+            <div class="tab-contents"></div>
+        </div>
+        
+        <div id="results" style="display: none; margin-top: 20px; padding: 15px; background-color: #f8f9fa; border-radius: 5px; border: 1px solid #ddd;">
+            <h3>Результаты анализа:</h3>
+            <div id="analysisResults"></div>
+        </div>
+        
+        <div class="action-buttons">
+            <button id="saveButton">💾 Сохранить данные</button>
+            <button id="clearButton">🗑 Очистить форму</button>
+            <button id="reloadButton">🔄 Загрузить заново</button>
+        </div>
+        
+        <div id="notification" style="color: green; margin-top: 10px;"></div>
+    </div>
+    
+    <!-- сначала GUI движок, потом решатель -->
+    <script src="./js/gui-engine.js"></script>
+    <script src="./js/solver.js"></script>
+</body>
+</html>
