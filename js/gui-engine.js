@@ -297,7 +297,7 @@ function findNestedObject(obj, targetKey) {
 function renderJSON(data, container, skipHeaders = false, tabName) {
     for (const key in data) {
         if (['Качественное значение', 'Числовое значение', 'единица измерения', 
-             'место записи в документе', 'путь к узлу документа'].includes(key)) {
+             'место записи в документе', 'путь к узлу документа', 'Синонимы', 'синоним'].includes(key)) {
             continue;
         }
 
@@ -318,14 +318,106 @@ function renderJSON(data, container, skipHeaders = false, tabName) {
         }
 
         if (typeof data[key] === 'object' && data[key] !== null) {
-            if (data[key]['Числовое значение']) {
+            // Обработка характеристик для "Анализ крови на гепатит С с определением генотипа"
+            if (key === "Анализ крови на гепатит С с определением генотипа" && 
+                data[key]['Характеристика'] && Array.isArray(data[key]['Характеристика'])) {
+                
+                const sectionDiv = document.createElement('div');
+                sectionDiv.classList.add('characteristic-section');
+                
+                const header = document.createElement('h4');
+                header.textContent = key;
+                header.style.marginBottom = '10px';
+                header.style.color = '#2c3e50';
+                sectionDiv.appendChild(header);
+
+                data[key]['Характеристика'].forEach((characteristicGroup, index) => {
+                    if (characteristicGroup && characteristicGroup['Результат']) {
+                        const resultData = characteristicGroup['Результат'];
+                        if (resultData['Качественное значение']) {
+                            const label = document.createElement('label');
+                            label.textContent = "Результат: ";
+                            label.style.fontWeight = 'bold';
+                            label.style.display = 'block';
+                            label.style.marginBottom = '5px';
+                            sectionDiv.appendChild(label);
+
+                            const select = document.createElement('select');
+                            select.name = 'Анализ крови на гепатит С с определением генотипа_Результат';
+                            select.style.padding = '5px';
+                            select.style.border = '1px solid #ccc';
+                            select.style.borderRadius = '3px';
+                            select.style.minWidth = '200px';
+                            
+                            const emptyOption = document.createElement('option');
+                            emptyOption.value = "";
+                            emptyOption.textContent = "-- Выберите генотип --";
+                            select.appendChild(emptyOption);
+                            
+                            const qualitativeValues = resultData['Качественное значение'];
+                            for (const qualitativeKey in qualitativeValues) {
+                                const optionElement = document.createElement('option');
+                                optionElement.value = qualitativeKey;
+                                optionElement.textContent = qualitativeKey;
+                                
+                                if (allTabsData[tabName].data['Анализ крови на гепатит С с определением генотипа_Результат'] === qualitativeKey) {
+                                    optionElement.selected = true;
+                                }
+                                
+                                select.appendChild(optionElement);
+                            }
+                            
+                            select.addEventListener('change', function() {
+                                allTabsData[tabName].data['Анализ крови на гепатит С с определением генотипа_Результат'] = this.value;
+                            });
+                            
+                            sectionDiv.appendChild(select);
+                        }
+                    }
+                });
+                
+                div.appendChild(sectionDiv);
+            }
+            // Обработка характеристик для других полей с характеристиками
+            else if (data[key]['Характеристика'] && Array.isArray(data[key]['Характеристика'])) {
+                const sectionDiv = document.createElement('div');
+                sectionDiv.classList.add('characteristic-section');
+                
+                const header = document.createElement('h4');
+                header.textContent = key;
+                header.style.marginBottom = '10px';
+                header.style.color = '#2c3e50';
+                sectionDiv.appendChild(header);
+
+                data[key]['Характеристика'].forEach((characteristicGroup, index) => {
+                    if (characteristicGroup) {
+                        const characteristicContainer = document.createElement('div');
+                        characteristicContainer.classList.add('characteristic-group');
+                        characteristicContainer.style.marginBottom = '15px';
+                        characteristicContainer.style.padding = '10px';
+                        characteristicContainer.style.border = '1px solid #ddd';
+                        characteristicContainer.style.borderRadius = '5px';
+                        
+                        renderJSON(characteristicGroup, characteristicContainer, true, tabName);
+                        sectionDiv.appendChild(characteristicContainer);
+                    }
+                });
+                
+                div.appendChild(sectionDiv);
+            }
+            else if (data[key]['Числовое значение']) {
                 const label = document.createElement('label');
                 label.textContent = `${key}: `;
+                label.style.fontWeight = 'bold';
                 div.appendChild(label);
 
                 const input = document.createElement('input');
                 input.type = 'number';
                 input.name = key;
+                input.style.marginLeft = '10px';
+                input.style.padding = '5px';
+                input.style.border = '1px solid #ccc';
+                input.style.borderRadius = '3px';
                 
                 if (data[key]['Числовое значение']['единица измерения']) {
                     input.placeholder = `Введите значение (${data[key]['Числовое значение']['единица измерения']})`;
@@ -342,14 +434,30 @@ function renderJSON(data, container, skipHeaders = false, tabName) {
                 });
                 
                 div.appendChild(input);
+
+                // Добавляем единицу измерения
+                if (data[key]['Числовое значение']['единица измерения']) {
+                    const unitSpan = document.createElement('span');
+                    unitSpan.textContent = ` ${data[key]['Числовое значение']['единица измерения']}`;
+                    unitSpan.style.marginLeft = '5px';
+                    unitSpan.style.color = '#666';
+                    div.appendChild(unitSpan);
+                }
             } 
             else if (data[key]['Качественное значение']) {
                 const label = document.createElement('label');
                 label.textContent = `${key}: `;
+                label.style.fontWeight = 'bold';
+                label.style.display = 'block';
+                label.style.marginBottom = '5px';
                 div.appendChild(label);
 
                 const select = document.createElement('select');
                 select.name = key;
+                select.style.padding = '5px';
+                select.style.border = '1px solid #ccc';
+                select.style.borderRadius = '3px';
+                select.style.minWidth = '250px';
                 
                 const emptyOption = document.createElement('option');
                 emptyOption.value = "";
@@ -378,15 +486,26 @@ function renderJSON(data, container, skipHeaders = false, tabName) {
             else if (data[key]['присутствие'] || data[key]['отсутствует']) {
                 const wrapperDiv = document.createElement('div');
                 wrapperDiv.classList.add('symptom-wrapper');
+                wrapperDiv.style.marginBottom = '15px';
+                wrapperDiv.style.padding = '10px';
+                wrapperDiv.style.border = '1px solid #e0e0e0';
+                wrapperDiv.style.borderRadius = '5px';
+                wrapperDiv.style.backgroundColor = '#f9f9f9';
                 
                 const symptomLabel = document.createElement('label');
                 symptomLabel.textContent = `${key}: `;
                 symptomLabel.style.fontWeight = 'bold';
+                symptomLabel.style.display = 'block';
+                symptomLabel.style.marginBottom = '8px';
                 wrapperDiv.appendChild(symptomLabel);
                 
                 const select = document.createElement('select');
                 select.name = key;
                 select.classList.add('presence-select');
+                select.style.padding = '5px';
+                select.style.border = '1px solid #ccc';
+                select.style.borderRadius = '3px';
+                select.style.minWidth = '150px';
                 
                 const optionPresent = document.createElement('option');
                 optionPresent.value = 'присутствие';
@@ -405,6 +524,11 @@ function renderJSON(data, container, skipHeaders = false, tabName) {
                 
                 const characteristicsDiv = document.createElement('div');
                 characteristicsDiv.classList.add('characteristics');
+                characteristicsDiv.style.marginTop = '10px';
+                characteristicsDiv.style.padding = '10px';
+                characteristicsDiv.style.backgroundColor = '#fff';
+                characteristicsDiv.style.border = '1px solid #ddd';
+                characteristicsDiv.style.borderRadius = '3px';
                 
                 if (data[key]['присутствие'] && data[key]['присутствие']['Характеристика']) {
                     characteristicsDiv.style.display = select.value === 'присутствие' ? 'block' : 'none';
@@ -430,19 +554,41 @@ function renderJSON(data, container, skipHeaders = false, tabName) {
                      'Сведения при обращении', 'Сведения в динамике'].includes(key)) {
                 const sectionDiv = document.createElement('div');
                 sectionDiv.classList.add('collapsible-section');
+                sectionDiv.style.marginBottom = '15px';
                 
                 const headerButton = document.createElement('button');
                 headerButton.classList.add('section-header');
                 headerButton.textContent = key;
+                headerButton.style.width = '100%';
+                headerButton.style.padding = '12px';
+                headerButton.style.backgroundColor = '#3498db';
+                headerButton.style.color = 'white';
+                headerButton.style.border = 'none';
+                headerButton.style.borderRadius = '5px';
+                headerButton.style.cursor = 'pointer';
+                headerButton.style.textAlign = 'left';
+                headerButton.style.fontSize = '16px';
+                headerButton.style.fontWeight = 'bold';
+                
                 headerButton.addEventListener('click', function() {
                     this.classList.toggle('active');
                     const content = this.nextElementSibling;
-                    content.style.display = content.style.display === 'block' ? 'none' : 'block';
+                    if (content.style.display === 'block') {
+                        content.style.display = 'none';
+                        this.style.backgroundColor = '#3498db';
+                    } else {
+                        content.style.display = 'block';
+                        this.style.backgroundColor = '#2980b9';
+                    }
                 });
                 
                 const contentDiv = document.createElement('div');
                 contentDiv.classList.add('section-content');
                 contentDiv.style.display = 'none';
+                contentDiv.style.padding = '15px';
+                contentDiv.style.border = '1px solid #ddd';
+                contentDiv.style.borderRadius = '0 0 5px 5px';
+                contentDiv.style.backgroundColor = '#f8f9fa';
                 
                 renderJSON(data[key], contentDiv, true, tabName);
                 
@@ -450,10 +596,25 @@ function renderJSON(data, container, skipHeaders = false, tabName) {
                 sectionDiv.appendChild(contentDiv);
                 div.appendChild(sectionDiv);
             }
+            else if (key === 'Характеристика' && typeof data[key] === 'object') {
+                // Обработка вложенных характеристик
+                const charContainer = document.createElement('div');
+                charContainer.classList.add('nested-characteristics');
+                charContainer.style.marginLeft = '20px';
+                charContainer.style.padding = '10px';
+                charContainer.style.borderLeft = '2px solid #3498db';
+                
+                renderJSON(data[key], charContainer, true, tabName);
+                div.appendChild(charContainer);
+            }
             else {
                 if (!skipHeaders && Object.keys(data[key]).length > 0) {
-                    const header = document.createElement('h3');
+                    const header = document.createElement('h4');
                     header.textContent = key;
+                    header.style.marginBottom = '10px';
+                    header.style.color = '#2c3e50';
+                    header.style.borderBottom = '1px solid #ecf0f1';
+                    header.style.paddingBottom = '5px';
                     div.appendChild(header);
                 }
                 
