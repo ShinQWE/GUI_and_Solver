@@ -335,43 +335,13 @@ function renderJSON(data, container, skipHeaders = false, tabName) {
                     if (characteristicGroup && characteristicGroup['Результат']) {
                         const resultData = characteristicGroup['Результат'];
                         if (resultData['Качественное значение']) {
-                            const label = document.createElement('label');
-                            label.textContent = "Результат: ";
-                            label.style.fontWeight = 'bold';
-                            label.style.display = 'block';
-                            label.style.marginBottom = '5px';
-                            sectionDiv.appendChild(label);
-
-                            const select = document.createElement('select');
-                            select.name = 'Анализ крови на гепатит С с определением генотипа_Результат';
-                            select.style.padding = '5px';
-                            select.style.border = '1px solid #ccc';
-                            select.style.borderRadius = '3px';
-                            select.style.minWidth = '200px';
-                            
-                            const emptyOption = document.createElement('option');
-                            emptyOption.value = "";
-                            emptyOption.textContent = "-- Выберите генотип --";
-                            select.appendChild(emptyOption);
-                            
-                            const qualitativeValues = resultData['Качественное значение'];
-                            for (const qualitativeKey in qualitativeValues) {
-                                const optionElement = document.createElement('option');
-                                optionElement.value = qualitativeKey;
-                                optionElement.textContent = qualitativeKey;
-                                
-                                if (allTabsData[tabName].data['Анализ крови на гепатит С с определением генотипа_Результат'] === qualitativeKey) {
-                                    optionElement.selected = true;
-                                }
-                                
-                                select.appendChild(optionElement);
-                            }
-                            
-                            select.addEventListener('change', function() {
-                                allTabsData[tabName].data['Анализ крови на гепатит С с определением генотипа_Результат'] = this.value;
-                            });
-                            
-                            sectionDiv.appendChild(select);
+                            createMultiSelectDropdown(
+                                sectionDiv, 
+                                "Результат", 
+                                resultData['Качественное значение'], 
+                                'Анализ крови на гепатит С с определением генотипа_Результат',
+                                tabName
+                            );
                         }
                     }
                 });
@@ -444,7 +414,12 @@ function renderJSON(data, container, skipHeaders = false, tabName) {
                     div.appendChild(unitSpan);
                 }
             } 
-            else if (data[key]['Качественное значение']) {
+            else if (data[key]['Качественное значение'] && !isPassportTab) {
+                // Для всех качественных значений (кроме паспортных) создаем красивый мультиселект
+                createMultiSelectDropdown(div, key, data[key]['Качественное значение'], key, tabName);
+            }
+            else if (data[key]['Качественное значение'] && isPassportTab) {
+                // Для паспортных данных оставляем обычный select
                 const label = document.createElement('label');
                 label.textContent = `${key}: `;
                 label.style.fontWeight = 'bold';
@@ -628,6 +603,178 @@ function renderJSON(data, container, skipHeaders = false, tabName) {
     }
 }
 
+// Функция для создания красивого выпадающего списка с множественным выбором
+function createMultiSelectDropdown(container, labelText, options, fieldName, tabName) {
+    const dropdownContainer = document.createElement('div');
+    dropdownContainer.classList.add('multi-select-dropdown');
+    dropdownContainer.style.marginBottom = '15px';
+    dropdownContainer.style.position = 'relative';
+
+    const label = document.createElement('label');
+    label.textContent = `${labelText}: `;
+    label.style.fontWeight = 'bold';
+    label.style.display = 'block';
+    label.style.marginBottom = '8px';
+    label.style.cursor = 'pointer';
+    dropdownContainer.appendChild(label);
+
+    // Кнопка для открытия/закрытия списка
+    const dropdownButton = document.createElement('button');
+    dropdownButton.type = 'button';
+    dropdownButton.classList.add('dropdown-button');
+    dropdownButton.style.width = '100%';
+    dropdownButton.style.padding = '10px 15px';
+    dropdownButton.style.border = '1px solid #ddd';
+    dropdownButton.style.borderRadius = '6px';
+    dropdownButton.style.backgroundColor = 'white';
+    dropdownButton.style.textAlign = 'left';
+    dropdownButton.style.cursor = 'pointer';
+    dropdownButton.style.display = 'flex';
+    dropdownButton.style.justifyContent = 'space-between';
+    dropdownButton.style.alignItems = 'center';
+    dropdownButton.style.transition = 'all 0.3s ease';
+
+    const buttonText = document.createElement('span');
+    buttonText.textContent = 'Выберите значения';
+    buttonText.style.color = '#666';
+    dropdownButton.appendChild(buttonText);
+
+    const arrow = document.createElement('span');
+    arrow.textContent = '▼';
+    arrow.style.transition = 'transform 0.3s ease';
+    arrow.style.fontSize = '12px';
+    dropdownButton.appendChild(arrow);
+
+    // Список опций
+    const optionsList = document.createElement('div');
+    optionsList.classList.add('dropdown-options');
+    optionsList.style.display = 'none';
+    optionsList.style.position = 'absolute';
+    optionsList.style.top = '100%';
+    optionsList.style.left = '0';
+    optionsList.style.right = '0';
+    optionsList.style.backgroundColor = 'white';
+    optionsList.style.border = '1px solid #ddd';
+    optionsList.style.borderTop = 'none';
+    optionsList.style.borderRadius = '0 0 6px 6px';
+    optionsList.style.maxHeight = '200px';
+    optionsList.style.overflowY = 'auto';
+    optionsList.style.zIndex = '1000';
+    optionsList.style.boxShadow = '0 4px 12px rgba(0,0,0,0.1)';
+
+    // Текущие выбранные значения
+    const currentValue = allTabsData[tabName].data[fieldName] || [];
+    const selectedValues = Array.isArray(currentValue) ? currentValue : 
+                          currentValue ? [currentValue] : [];
+
+    // Создаем чекбоксы для каждой опции
+    for (const optionKey in options) {
+        const optionDiv = document.createElement('label');
+        optionDiv.style.display = 'flex';
+        optionDiv.style.alignItems = 'center';
+        optionDiv.style.padding = '8px 12px';
+        optionDiv.style.cursor = 'pointer';
+        optionDiv.style.transition = 'background-color 0.2s ease';
+        optionDiv.style.borderBottom = '1px solid #f0f0f0';
+
+        optionDiv.addEventListener('mouseenter', function() {
+            this.style.backgroundColor = '#f8f9fa';
+        });
+
+        optionDiv.addEventListener('mouseleave', function() {
+            this.style.backgroundColor = 'transparent';
+        });
+
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.value = optionKey;
+        checkbox.style.marginRight = '10px';
+        checkbox.style.cursor = 'pointer';
+
+        if (selectedValues.includes(optionKey)) {
+            checkbox.checked = true;
+        }
+
+        const optionText = document.createElement('span');
+        optionText.textContent = optionKey;
+        optionText.style.flex = '1';
+
+        optionDiv.appendChild(checkbox);
+        optionDiv.appendChild(optionText);
+        optionsList.appendChild(optionDiv);
+    }
+
+    // Обновляем текст кнопки при выборе
+    function updateButtonText() {
+        const checkedBoxes = optionsList.querySelectorAll('input[type="checkbox"]:checked');
+        if (checkedBoxes.length === 0) {
+            buttonText.textContent = 'Выберите значения';
+            buttonText.style.color = '#666';
+        } else if (checkedBoxes.length === 1) {
+            buttonText.textContent = checkedBoxes[0].value;
+            buttonText.style.color = '#333';
+        } else {
+            buttonText.textContent = `Выбрано: ${checkedBoxes.length}`;
+            buttonText.style.color = '#333';
+        }
+    }
+
+    // Сохраняем выбранные значения
+    function saveSelectedValues() {
+        const checkedBoxes = optionsList.querySelectorAll('input[type="checkbox"]:checked');
+        const selected = Array.from(checkedBoxes).map(cb => cb.value);
+        allTabsData[tabName].data[fieldName] = selected;
+    }
+
+    // Обработчики событий для чекбоксов
+    optionsList.addEventListener('change', function(e) {
+        if (e.target.type === 'checkbox') {
+            updateButtonText();
+            saveSelectedValues();
+        }
+    });
+
+    // Открытие/закрытие dropdown
+    dropdownButton.addEventListener('click', function(e) {
+        e.stopPropagation();
+        const isOpen = optionsList.style.display === 'block';
+        
+        if (isOpen) {
+            optionsList.style.display = 'none';
+            dropdownButton.style.borderRadius = '6px';
+            dropdownButton.style.borderBottom = '1px solid #ddd';
+            arrow.style.transform = 'rotate(0deg)';
+        } else {
+            optionsList.style.display = 'block';
+            dropdownButton.style.borderRadius = '6px 6px 0 0';
+            dropdownButton.style.borderBottom = '1px solid #ddd';
+            arrow.style.transform = 'rotate(180deg)';
+        }
+    });
+
+    // Закрытие dropdown при клике вне его
+    document.addEventListener('click', function(e) {
+        if (!dropdownContainer.contains(e.target)) {
+            optionsList.style.display = 'none';
+            dropdownButton.style.borderRadius = '6px';
+            dropdownButton.style.borderBottom = '1px solid #ddd';
+            arrow.style.transform = 'rotate(0deg)';
+        }
+    });
+
+    // Инициализируем текст кнопки
+    updateButtonText();
+
+    dropdownContainer.appendChild(dropdownButton);
+    dropdownContainer.appendChild(optionsList);
+    container.appendChild(dropdownContainer);
+
+    // Добавляем стиль для последнего элемента без границы
+    const lastOption = optionsList.lastElementChild;
+    if (lastOption) {
+        lastOption.style.borderBottom = 'none';
+    }
+}
 function saveAllData() {
     const ibId = "ИБ_" + new Date().getTime();
     const outputData = {
@@ -651,6 +798,12 @@ function saveAllData() {
             
             if (fieldValue === null || fieldValue === undefined) {
                 continue;
+            } else if (Array.isArray(fieldValue)) {
+                // Сохраняем массив значений как строку с разделителями
+                ibData["Данные"][tabName][fieldName] = {
+                    "Тип": "Множественный выбор",
+                    "Значение": fieldValue.join(', ')
+                };
             } else if (typeof fieldValue === 'object') {
                 ibData["Данные"][tabName][fieldName] = JSON.parse(JSON.stringify(fieldValue));
             } else if (typeof fieldValue === 'number') {
@@ -714,7 +867,14 @@ function extract_patient_data() {
     for (const tabName in allTabsData) {
         for (const fieldName in allTabsData[tabName].data) {
             const fieldValue = allTabsData[tabName].data[fieldName];
-            if (fieldValue !== null && fieldValue !== undefined && fieldValue !== '') {
+            
+            // Обрабатываем массивы (множественный выбор)
+            if (Array.isArray(fieldValue)) {
+                if (fieldValue.length > 0) {
+                    // Для полей с множественным выбором сохраняем как строку с разделителями
+                    patient_data[fieldName] = fieldValue.join(', ');
+                }
+            } else if (fieldValue !== null && fieldValue !== undefined && fieldValue !== '') {
                 patient_data[fieldName] = fieldValue;
             }
         }
@@ -722,10 +882,13 @@ function extract_patient_data() {
 
     // Специальная обработка некоторых полей
     if ("Операции" in patient_data) {
-        if (patient_data["Операции"] === "Трансплантация печени") {
-            patient_data["Трансплантация печени"] = "проводилась";
-        } else if (patient_data["Операции"] === "") {
-            patient_data["Трансплантация печени"] = "не проводилась";
+        const operations = patient_data["Операции"];
+        if (typeof operations === 'string') {
+            if (operations.includes("Трансплантация печени")) {
+                patient_data["Трансплантация печени"] = "проводилась";
+            } else if (operations === "") {
+                patient_data["Трансплантация печени"] = "не проводилась";
+            }
         }
     }
 

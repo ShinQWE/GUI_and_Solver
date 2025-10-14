@@ -5,7 +5,17 @@ function normalize_diagnosis_name(diagnosis) {
         return "";
     }
 
-    diagnosis = diagnosis.toLowerCase().trim();
+    // Если diagnosis - массив, берем первый элемент
+    if (Array.isArray(diagnosis)) {
+        if (diagnosis.length === 0) {
+            return "";
+        }
+        diagnosis = diagnosis[0]; // Берем первый диагноз из массива
+    }
+
+    // Убеждаемся, что diagnosis - строка
+    diagnosis = String(diagnosis).toLowerCase().trim();
+    
     const replacements = {
         'аг': 'артериальная гипертензия',
         'гб': 'гипертоническая болезнь',
@@ -63,20 +73,33 @@ function find_disease_node(knowledge_base, diagnosis) {
 function extract_patient_value(patient_data, field_name) {
     // Прямое совпадение
     if (field_name in patient_data) {
-        return patient_data[field_name];
+        const value = patient_data[field_name];
+        // Если значение - массив, возвращаем как строку
+        if (Array.isArray(value)) {
+            return value.join(', ');
+        }
+        return value;
     }
 
     // Совпадение без учета пробелов и регистра
     const lower_field = field_name.toLowerCase().replace(/\s+/g, "");
     for (const key in patient_data) {
         if (key.toLowerCase().replace(/\s+/g, "") === lower_field) {
-            return patient_data[key];
+            const value = patient_data[key];
+            if (Array.isArray(value)) {
+                return value.join(', ');
+            }
+            return value;
         }
     }
 
     // Поиск в значениях
     for (const key in patient_data) {
-        const value = patient_data[key];
+        let value = patient_data[key];
+        // Если значение - массив, преобразуем в строку для поиска
+        if (Array.isArray(value)) {
+            value = value.join(', ');
+        }
         if (typeof value === 'string' && value.toLowerCase().includes(field_name.toLowerCase())) {
             return value;
         }
@@ -87,6 +110,12 @@ function extract_patient_value(patient_data, field_name) {
 
 function normalize_value(value) {
     if (value === null || value === undefined) return "";
+    
+    // Если значение - массив, преобразуем в строку
+    if (Array.isArray(value)) {
+        value = value.join(', ');
+    }
+    
     return String(value).toLowerCase().trim();
 }
 
@@ -633,7 +662,12 @@ function analyzeData() {
 function enhance_patient_data(patient_data) {
     // Нормализация опыта терапии
     if (patient_data["ПВТ (противовирусной терапии)"]) {
-        const pvt = patient_data["ПВТ (противовирусной терапии)"].toLowerCase();
+        let pvt = patient_data["ПВТ (противовирусной терапии)"];
+        // Если значение - массив, берем первый элемент
+        if (Array.isArray(pvt)) {
+            pvt = pvt.length > 0 ? pvt[0] : "";
+        }
+        pvt = pvt.toLowerCase();
         if (pvt.includes("не ответил") || pvt.includes("неэффектив")) {
             patient_data["Опыт терапии_ПВТ (противовирусной терапии)"] = "не ответил";
             patient_data["Опыт терапии_терапия ПегИФН + РБВ"] = "не ответил";
@@ -644,7 +678,12 @@ function enhance_patient_data(patient_data) {
 
     // Нормализация трансплантации
     if (patient_data["Операции"]) {
-        const operations = patient_data["Операции"].toLowerCase();
+        let operations = patient_data["Операции"];
+        // Если значение - массив, преобразуем в строку для поиска
+        if (Array.isArray(operations)) {
+            operations = operations.join(', ');
+        }
+        operations = operations.toLowerCase();
         if (operations.includes("трансплантация") || operations.includes("пересадка")) {
             patient_data["Трансплантация печени"] = "проводилась";
         } else {
@@ -654,7 +693,12 @@ function enhance_patient_data(patient_data) {
 
     // Нормализация цирроза
     if (patient_data["Сопутствующий диагноз"]) {
-        const diagnoses = patient_data["Сопутствующий диагноз"].toLowerCase();
+        let diagnoses = patient_data["Сопутствующий диагноз"];
+        // Если значение - массив, преобразуем в строку для поиска
+        if (Array.isArray(diagnoses)) {
+            diagnoses = diagnoses.join(', ');
+        }
+        diagnoses = diagnoses.toLowerCase();
         if (diagnoses.includes("цирроз")) {
             patient_data["Цирроз печени"] = "имеется";
         } else {
@@ -667,7 +711,6 @@ function enhance_patient_data(patient_data) {
         patient_data["Анализ крови на гепатит С с определением генотипа_Результат"] = patient_data["Результат"];
     }
 }
-
 // Экспортируем главную функцию
 window.analyzeData = analyzeData;
 
