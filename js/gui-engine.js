@@ -152,12 +152,15 @@ function initializeTabsData() {
         }
     }
     
+    // УБРАТЬ ДУБЛИРОВАНИЕ - закомментировать этот блок
+    /*
     if (tempData["Сведения о состоянии"] && !tempData["Сведения при обращении"]) {
         tempData["Сведения при обращении"] = { data: tempData["Сведения о состоянии"].data };
     }
     else if (tempData["Сведения при обращении"] && !tempData["Сведения о состоянии"]) {
         tempData["Сведения о состоянии"] = { data: tempData["Сведения при обращении"].data };
     }
+    */
     
     allTabsData = tempData;
 }
@@ -303,7 +306,7 @@ function renderJSON(data, container, skipHeaders = false, tabName) {
 
         const isPassportTab = tabName === "Сведения паспортные";
         const isIntermediateNode = !isPassportTab && [
-            'Вершина меню', 'Идентификация', 'Группа', 'Вкладка',
+            'Вершина меню', 'Идентификация', 'Вкладка',
             'Шаблон', 'Описание GUI для ПС'
         ].includes(key);
 
@@ -318,8 +321,49 @@ function renderJSON(data, container, skipHeaders = false, tabName) {
         }
 
         if (typeof data[key] === 'object' && data[key] !== null) {
+            // Обработка ГРУПП
+            if (key === 'Группа' && typeof data[key] === 'object') {
+                const groupContainer = document.createElement('div');
+                groupContainer.classList.add('group-container');
+                groupContainer.style.marginBottom = '20px';
+                
+                for (const groupName in data[key]) {
+                    const groupSection = document.createElement('div');
+                    groupSection.classList.add('group-section');
+                    groupSection.style.marginBottom = '15px';
+                    groupSection.style.padding = '10px';
+                    groupSection.style.border = '1px solid #e0e0e0';
+                    groupSection.style.borderRadius = '5px';
+                    groupSection.style.backgroundColor = '#f8f9fa';
+                    
+                    const groupHeader = document.createElement('h4');
+                    groupHeader.textContent = groupName;
+                    groupHeader.style.margin = '0 0 10px 0';
+                    groupHeader.style.color = '#2c3e50';
+                    groupHeader.style.cursor = 'pointer';
+                    
+                    const groupContent = document.createElement('div');
+                    groupContent.classList.add('group-content');
+                    
+                    groupHeader.addEventListener('click', function() {
+                        const isVisible = groupContent.style.display !== 'none';
+                        groupContent.style.display = isVisible ? 'none' : 'block';
+                        this.style.color = isVisible ? '#2c3e50' : '#3498db';
+                    });
+                    
+                    groupSection.appendChild(groupHeader);
+                    groupSection.appendChild(groupContent);
+                    
+                    // Рендерим содержимое группы с префиксом для имен полей
+                    renderGroupContent(data[key][groupName], groupContent, groupName, tabName);
+                    
+                    groupContainer.appendChild(groupSection);
+                }
+                
+                div.appendChild(groupContainer);
+            }
             // Обработка характеристик для "Анализ крови на гепатит С с определением генотипа"
-            if (key === "Анализ крови на гепатит С с определением генотипа" && 
+            else if (key === "Анализ крови на гепатит С с определением генотипа" && 
                 data[key]['Характеристика'] && Array.isArray(data[key]['Характеристика'])) {
                 
                 const sectionDiv = document.createElement('div');
@@ -603,6 +647,116 @@ function renderJSON(data, container, skipHeaders = false, tabName) {
     }
 }
 
+// Функция для рендеринга содержимого групп
+function renderGroupContent(groupData, container, groupName, tabName) {
+    if (groupData && groupData['Наблюдение']) {
+        for (const observationName in groupData['Наблюдение']) {
+            const observationData = groupData['Наблюдение'][observationName];
+            
+            if (observationData && observationData['Характеристика'] && Array.isArray(observationData['Характеристика'])) {
+                const observationSection = document.createElement('div');
+                observationSection.classList.add('observation-section');
+                observationSection.style.marginBottom = '15px';
+                observationSection.style.padding = '10px';
+                observationSection.style.backgroundColor = '#fff';
+                observationSection.style.border = '1px solid #ddd';
+                observationSection.style.borderRadius = '3px';
+                
+                const observationHeader = document.createElement('h5');
+                observationHeader.textContent = observationName;
+                observationHeader.style.margin = '0 0 10px 0';
+                observationHeader.style.color = '#34495e';
+                observationSection.appendChild(observationHeader);
+                
+                observationData['Характеристика'].forEach((characteristic, index) => {
+                    if (characteristic) {
+                        for (const charName in characteristic) {
+                            const charData = characteristic[charName];
+                            const fieldFullName = `${observationName}_${charName}`;
+                            
+                            if (charData && charData['Качественное значение']) {
+                                createMultiSelectDropdown(
+                                    observationSection, 
+                                    charName, 
+                                    charData['Качественное значение'], 
+                                    fieldFullName,
+                                    tabName
+                                );
+                            } else if (charData && charData['Числовое значение']) {
+                                const charDiv = document.createElement('div');
+                                charDiv.classList.add('characteristic-field');
+                                charDiv.style.marginBottom = '10px';
+                                
+                                const label = document.createElement('label');
+                                label.textContent = `${charName}: `;
+                                label.style.fontWeight = 'bold';
+                                label.style.display = 'block';
+                                label.style.marginBottom = '5px';
+                                charDiv.appendChild(label);
+                                
+                                const input = document.createElement('input');
+                                input.type = 'number';
+                                input.name = fieldFullName;
+                                input.style.padding = '5px';
+                                input.style.border = '1px solid #ccc';
+                                input.style.borderRadius = '3px';
+                                input.style.width = '200px';
+                                
+                                if (allTabsData[tabName].data[fieldFullName] !== undefined) {
+                                    input.value = allTabsData[tabName].data[fieldFullName];
+                                }
+                                
+                                input.addEventListener('input', function() {
+                                    allTabsData[tabName].data[fieldFullName] = this.value ? Number(this.value) : null;
+                                });
+                                
+                                charDiv.appendChild(input);
+                                
+                                if (charData['Числовое значение']['единица измерения']) {
+                                    const unitSpan = document.createElement('span');
+                                    unitSpan.textContent = ` ${charData['Числовое значение']['единица измерения']}`;
+                                    unitSpan.style.marginLeft = '5px';
+                                    unitSpan.style.color = '#666';
+                                    charDiv.appendChild(unitSpan);
+                                }
+                                
+                                observationSection.appendChild(charDiv);
+                            }
+                        }
+                    }
+                });
+                
+                container.appendChild(observationSection);
+            }
+        }
+    }
+    
+    // Специальная обработка для группы "Диурез"
+    if (groupName === "Диурез") {
+        const diuresisSection = document.createElement('div');
+        diuresisSection.classList.add('diuresis-section');
+        
+        if (groupData && groupData['Наблюдение']) {
+            for (const fieldName in groupData['Наблюдение']) {
+                const fieldData = groupData['Наблюдение'][fieldName];
+                const fieldFullName = `Диурез_${fieldName}`;
+                
+                if (fieldData && fieldData['Качественное значение']) {
+                    createMultiSelectDropdown(
+                        diuresisSection, 
+                        fieldName, 
+                        fieldData['Качественное значение'], 
+                        fieldFullName,
+                        tabName
+                    );
+                }
+            }
+        }
+        
+        container.appendChild(diuresisSection);
+    }
+}
+
 // Функция для создания красивого выпадающего списка с множественным выбором
 function createMultiSelectDropdown(container, labelText, options, fieldName, tabName) {
     const dropdownContainer = document.createElement('div');
@@ -775,6 +929,7 @@ function createMultiSelectDropdown(container, labelText, options, fieldName, tab
         lastOption.style.borderBottom = 'none';
     }
 }
+
 function saveAllData() {
     const ibId = "ИБ_" + new Date().getTime();
     const outputData = {
@@ -788,9 +943,12 @@ function saveAllData() {
 
     const ibData = outputData["История болезни или наблюдений v.4"][ibId];
 
+    // Создаем структурированные группы
+    const structuredData = {};
+
     for (const tabName in allTabsData) {
-        if (!ibData["Данные"][tabName]) {
-            ibData["Данные"][tabName] = {};
+        if (!structuredData[tabName]) {
+            structuredData[tabName] = {};
         }
 
         for (const fieldName in allTabsData[tabName].data) {
@@ -798,21 +956,63 @@ function saveAllData() {
             
             if (fieldValue === null || fieldValue === undefined) {
                 continue;
-            } else if (Array.isArray(fieldValue)) {
-                // Сохраняем массив значений как строку с разделителями
-                ibData["Данные"][tabName][fieldName] = {
+            }
+
+            // Определяем группу для поля
+            let groupName = "Общие данные";
+            let actualFieldName = fieldName;
+
+            // Определяем принадлежность к группам
+            if (fieldName.includes("Перелом верхней трети плечевой кости_")) {
+                groupName = "Расширенный клинический диагноз";
+                actualFieldName = fieldName.replace("Перелом верхней трети плечевой кости_", "");
+            } else if (fieldName.includes("Перелом лопатки_")) {
+                groupName = "Расширенный клинический диагноз";
+                actualFieldName = fieldName.replace("Перелом лопатки_", "");
+            } else if (fieldName.includes("Перелом ключицы_")) {
+                groupName = "Расширенный клинический диагноз";
+                actualFieldName = fieldName.replace("Перелом ключицы_", "");
+            } else if (fieldName.includes("Вывих ключицы_")) {
+                groupName = "Расширенный клинический диагноз";
+                actualFieldName = fieldName.replace("Вывих ключицы_", "");
+            } else if (fieldName === "Объем" || fieldName === "Качество мочи") {
+                groupName = "Диурез";
+            } else if (fieldName.includes("Диурез_")) {
+                groupName = "Диурез";
+                actualFieldName = fieldName.replace("Диурез_", "");
+            }
+
+            // Создаем группу если её нет
+            if (!structuredData[tabName][groupName]) {
+                structuredData[tabName][groupName] = {};
+            }
+
+            // Сохраняем значение
+            if (Array.isArray(fieldValue)) {
+                structuredData[tabName][groupName][actualFieldName] = {
                     "Тип": "Множественный выбор",
                     "Значение": fieldValue.join(', ')
                 };
-            } else if (typeof fieldValue === 'object') {
-                ibData["Данные"][tabName][fieldName] = JSON.parse(JSON.stringify(fieldValue));
             } else if (typeof fieldValue === 'number') {
-                ibData["Данные"][tabName][fieldName] = {
+                // Добавляем единицы измерения для числовых полей
+                let unit = "";
+                if (fieldName === "Температура тела") unit = "°С";
+                else if (fieldName === "Частота сердечных сокращений") unit = "уд/мин";
+                else if (fieldName === "Гемоглобин") unit = "г/л";
+                else if (fieldName === "Количество лейкоцитов") unit = "× 10^9/л";
+                else if (fieldName === "Количество эритроцитов") unit = "× 10^12/л";
+                else if (fieldName === "Возраст") unit = "лет";
+                else if (fieldName === "Систолическое артериальное давление") unit = "мм.рт.ст.";
+                else if (fieldName === "Диастолическое артериальное давление") unit = "мм.рт.ст.";
+                else if (fieldName === "Скорость клубочковой фильтрации") unit = "мл/мин/1,73м";
+                
+                structuredData[tabName][groupName][actualFieldName] = {
                     "Тип": "Числовое",
-                    "Значение": fieldValue
+                    "Значение": fieldValue,
+                    "Единица измерения": unit
                 };
             } else {
-                ibData["Данные"][tabName][fieldName] = {
+                structuredData[tabName][groupName][actualFieldName] = {
                     "Тип": "Текстовое",
                     "Значение": fieldValue.toString()
                 };
@@ -820,6 +1020,10 @@ function saveAllData() {
         }
     }
 
+    // Копируем структурированные данные в выходной формат
+    ibData["Данные"] = JSON.parse(JSON.stringify(structuredData));
+
+    // Проверка на пустые данные
     let isEmpty = true;
     for (const tabName in ibData["Данные"]) {
         if (Object.keys(ibData["Данные"][tabName]).length > 0) {
