@@ -1113,11 +1113,11 @@ function extract_patient_data() {
         for (const fieldName in allTabsData[tabName].data) {
             const fieldValue = allTabsData[tabName].data[fieldName];
             
-            // Обрабатываем массивы (множественный выбор)
+            // Обрабатываем массивы (множественный выбор) - СОХРАНЯЕМ КАК МАССИВ!
             if (Array.isArray(fieldValue)) {
                 if (fieldValue.length > 0) {
-                    // Для полей с множественным выбором сохраняем как строку с разделителями
-                    patient_data[fieldName] = fieldValue.join(', ');
+                    // Сохраняем как массив, а не как строку
+                    patient_data[fieldName] = fieldValue; // ← ИЗМЕНИТЬ ЗДЕСЬ
                 }
             } else if (fieldValue !== null && fieldValue !== undefined && fieldValue !== '') {
                 patient_data[fieldName] = fieldValue;
@@ -1128,10 +1128,16 @@ function extract_patient_data() {
     // Специальная обработка некоторых полей
     if ("Операции" in patient_data) {
         const operations = patient_data["Операции"];
-        if (typeof operations === 'string') {
+        if (Array.isArray(operations)) {
             if (operations.includes("Трансплантация печени")) {
                 patient_data["Трансплантация печени"] = "проводилась";
-            } else if (operations === "") {
+            } else if (operations.length === 0 || operations.includes("операций не было")) {
+                patient_data["Трансплантация печени"] = "не проводилась";
+            }
+        } else if (typeof operations === 'string') {
+            if (operations.includes("Трансплантация печени")) {
+                patient_data["Трансплантация печени"] = "проводилась";
+            } else if (operations === "" || operations.includes("операций не было")) {
                 patient_data["Трансплантация печени"] = "не проводилась";
             }
         }
@@ -1140,13 +1146,18 @@ function extract_patient_data() {
     // Обработка терапии
     const therapy_fields = {
         "ПВТ (противовирусной терапии)": "Опыт терапии_ПВТ (противовирусной терапии)",
-        "терапия ПегИФN + РБВ": "Опыт терапии_терапия ПегИФN + РБВ",
+        "терапия ПегИФN + РБВ": "Опыт терапии_терапия ПегИФN + РБВ", 
         "Цирроз печени": "Цирроз печени"
     };
 
     for (const [src_field, target_field] of Object.entries(therapy_fields)) {
         if (src_field in patient_data) {
-            patient_data[target_field] = patient_data[src_field];
+            // Если значение - массив, берем первый элемент для анализа
+            if (Array.isArray(patient_data[src_field])) {
+                patient_data[target_field] = patient_data[src_field].length > 0 ? patient_data[src_field][0] : "";
+            } else {
+                patient_data[target_field] = patient_data[src_field];
+            }
         }
     }
 

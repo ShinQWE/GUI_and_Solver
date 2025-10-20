@@ -74,10 +74,7 @@ function extract_patient_value(patient_data, field_name) {
     // Прямое совпадение
     if (field_name in patient_data) {
         const value = patient_data[field_name];
-        // Если значение - массив, возвращаем как строку
-        if (Array.isArray(value)) {
-            return value.join(', ');
-        }
+        // Возвращаем как есть (массив или строку) - НЕ ПРЕОБРАЗУЕМ В СТРОКУ!
         return value;
     }
 
@@ -85,15 +82,11 @@ function extract_patient_value(patient_data, field_name) {
     const lower_field = field_name.toLowerCase().replace(/\s+/g, "");
     for (const key in patient_data) {
         if (key.toLowerCase().replace(/\s+/g, "") === lower_field) {
-            const value = patient_data[key];
-            if (Array.isArray(value)) {
-                return value.join(', ');
-            }
-            return value;
+            return patient_data[key]; // Возвращаем как есть
         }
     }
 
-    // Поиск в значениях
+    // Поиск в значениях (только для строковых значений)
     for (const key in patient_data) {
         let value = patient_data[key];
         // Если значение - массив, преобразуем в строку для поиска
@@ -111,9 +104,9 @@ function extract_patient_value(patient_data, field_name) {
 function normalize_value(value) {
     if (value === null || value === undefined) return "";
     
-    // Если значение - массив, преобразуем в строку
+    // Если значение - массив, преобразуем в строку для сравнения
     if (Array.isArray(value)) {
-        value = value.join(', ');
+        return value.join(', ').toLowerCase().trim();
     }
     
     return String(value).toLowerCase().trim();
