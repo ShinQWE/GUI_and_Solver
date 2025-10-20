@@ -962,6 +962,14 @@ function saveAllData() {
             let groupName = "Общие данные";
             let actualFieldName = fieldName;
 
+            // Определяем observationName для группировки
+            let observationName = fieldName;
+            if (fieldName.includes("_")) {
+                const parts = fieldName.split("_");
+                observationName = parts[0]; // Первая часть как название наблюдения
+                actualFieldName = parts.slice(1).join("_"); // Остальное как название поля
+            }
+
             // Определяем принадлежность к группам
             if (fieldName.includes("Перелом верхней трети плечевой кости_")) {
                 groupName = "Расширенный клинический диагноз";
@@ -987,35 +995,68 @@ function saveAllData() {
                 structuredData[tabName][groupName] = {};
             }
 
-            // Сохраняем значение
+            // Сохраняем значение с правильной группировкой
             if (Array.isArray(fieldValue)) {
-                structuredData[tabName][groupName][actualFieldName] = {
-                    "Тип": "Множественный выбор",
-                    "Значение": fieldValue.join(', ')
-                };
+                // Для групповых полей создаем вложенную структуру
+                if (groupName !== "Общие данные") {
+                    if (!structuredData[tabName][groupName][observationName]) {
+                        structuredData[tabName][groupName][observationName] = {};
+                    }
+                    structuredData[tabName][groupName][observationName][actualFieldName] = {
+                        "Тип": "Множественный выбор",
+                        "Значение": fieldValue.join(', ')
+                    };
+                } else {
+                    structuredData[tabName][groupName][actualFieldName] = {
+                        "Тип": "Множественный выбор", 
+                        "Значение": fieldValue.join(', ')
+                    };
+                }
             } else if (typeof fieldValue === 'number') {
-                // Добавляем единицы измерения для числовых полей
+                // Добавляем единицы измерения
                 let unit = "";
-                if (fieldName === "Температура тела") unit = "°С";
-                else if (fieldName === "Частота сердечных сокращений") unit = "уд/мин";
-                else if (fieldName === "Гемоглобин") unit = "г/л";
-                else if (fieldName === "Количество лейкоцитов") unit = "× 10^9/л";
-                else if (fieldName === "Количество эритроцитов") unit = "× 10^12/л";
-                else if (fieldName === "Возраст") unit = "лет";
-                else if (fieldName === "Систолическое артериальное давление") unit = "мм.рт.ст.";
-                else if (fieldName === "Диастолическое артериальное давление") unit = "мм.рт.ст.";
-                else if (fieldName === "Скорость клубочковой фильтрации") unit = "мл/мин/1,73м";
+                if (actualFieldName.includes("артериальное давление") || actualFieldName.includes("АД")) unit = "мм.рт.ст.";
+                else if (actualFieldName.includes("температура")) unit = "°С";
+                else if (actualFieldName.includes("частота") && actualFieldName.includes("сердечных")) unit = "уд/мин";
+                else if (actualFieldName.includes("гемоглобин")) unit = "г/л";
+                else if (actualFieldName.includes("лейкоцит")) unit = "× 10^9/л";
+                else if (actualFieldName.includes("эритроцит")) unit = "× 10^12/л";
+                else if (actualFieldName.includes("возраст")) unit = "лет";
+                else if (actualFieldName.includes("скорость") && actualFieldName.includes("фильтрации")) unit = "мл/мин/1,73м";
                 
-                structuredData[tabName][groupName][actualFieldName] = {
-                    "Тип": "Числовое",
-                    "Значение": fieldValue,
-                    "Единица измерения": unit
-                };
+                // Для групповых полей
+                if (groupName !== "Общие данные") {
+                    if (!structuredData[tabName][groupName][observationName]) {
+                        structuredData[tabName][groupName][observationName] = {};
+                    }
+                    structuredData[tabName][groupName][observationName][actualFieldName] = {
+                        "Тип": "Числовое",
+                        "Значение": fieldValue,
+                        "Единица измерения": unit
+                    };
+                } else {
+                    structuredData[tabName][groupName][actualFieldName] = {
+                        "Тип": "Числовое",
+                        "Значение": fieldValue, 
+                        "Единица измерения": unit
+                    };
+                }
             } else {
-                structuredData[tabName][groupName][actualFieldName] = {
-                    "Тип": "Текстовое",
-                    "Значение": fieldValue.toString()
-                };
+                // Для групповых полей
+                if (groupName !== "Общие данные") {
+                    if (!structuredData[tabName][groupName][observationName]) {
+                        structuredData[tabName][groupName][observationName] = {};
+                    }
+                    structuredData[tabName][groupName][observationName][actualFieldName] = {
+                        "Тип": "Текстовое",
+                        "Значение": fieldValue.toString()
+                    };
+                } else {
+                    structuredData[tabName][groupName][actualFieldName] = {
+                        "Тип": "Текстовое",
+                        "Значение": fieldValue.toString()
+                    };
+                }
             }
         }
     }
