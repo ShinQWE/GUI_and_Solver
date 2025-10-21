@@ -995,6 +995,14 @@ function saveAllData() {
                 structuredData[tabName][groupName] = {};
             }
 
+            // Получаем единицу измерения из структуры GUI
+            let unit = getUnitFromGUIStructure(tabName, fieldName, actualFieldName);
+            
+            // Если не нашли в структуре, используем эвристики как fallback
+            if (!unit) {
+                unit = getUnitByFieldName(actualFieldName);
+            }
+
             // Сохраняем значение с правильной группировкой
             if (Array.isArray(fieldValue)) {
                 // Для групповых полей создаем вложенную структуру
@@ -1013,33 +1021,28 @@ function saveAllData() {
                     };
                 }
             } else if (typeof fieldValue === 'number') {
-                // Добавляем единицы измерения
-                let unit = "";
-                if (actualFieldName.includes("артериальное давление") || actualFieldName.includes("АД")) unit = "мм.рт.ст.";
-                else if (actualFieldName.includes("температура")) unit = "°С";
-                else if (actualFieldName.includes("частота") && actualFieldName.includes("сердечных")) unit = "уд/мин";
-                else if (actualFieldName.includes("гемоглобин")) unit = "г/л";
-                else if (actualFieldName.includes("лейкоцит")) unit = "× 10^9/л";
-                else if (actualFieldName.includes("эритроцит")) unit = "× 10^12/л";
-                else if (actualFieldName.includes("возраст")) unit = "лет";
-                else if (actualFieldName.includes("скорость") && actualFieldName.includes("фильтрации")) unit = "мл/мин/1,73м";
-                
                 // Для групповых полей
                 if (groupName !== "Общие данные") {
                     if (!structuredData[tabName][groupName][observationName]) {
                         structuredData[tabName][groupName][observationName] = {};
                     }
-                    structuredData[tabName][groupName][observationName][actualFieldName] = {
+                    const fieldData = {
                         "Тип": "Числовое",
-                        "Значение": fieldValue,
-                        "Единица измерения": unit
+                        "Значение": fieldValue
                     };
+                    if (unit) {
+                        fieldData["Единица измерения"] = unit;
+                    }
+                    structuredData[tabName][groupName][observationName][actualFieldName] = fieldData;
                 } else {
-                    structuredData[tabName][groupName][actualFieldName] = {
+                    const fieldData = {
                         "Тип": "Числовое",
-                        "Значение": fieldValue, 
-                        "Единица измерения": unit
+                        "Значение": fieldValue
                     };
+                    if (unit) {
+                        fieldData["Единица измерения"] = unit;
+                    }
+                    structuredData[tabName][groupName][actualFieldName] = fieldData;
                 }
             } else {
                 // Для групповых полей
@@ -1061,7 +1064,7 @@ function saveAllData() {
         }
     }
 
-    // Копируем структурированные данные в выходной формат
+    // ⭐⭐ ВАЖНО: Копируем структурированные данные в выходной формат ⭐⭐
     ibData["Данные"] = JSON.parse(JSON.stringify(structuredData));
 
     // Проверка на пустые данные
@@ -1098,6 +1101,83 @@ function saveAllData() {
     URL.revokeObjectURL(url);
     
     showNotification("Все данные успешно сохранены!", "success");
+}
+
+// Новая функция для получения единиц измерения из структуры GUI
+function getUnitFromGUIStructure(tabName, fieldName, actualFieldName) {
+    if (!jsonData || !jsonData['Описание GUI для ПС']) return null;
+
+    try {
+        // Ищем поле в структуре GUI
+        const tabs = jsonData['Описание GUI для ПС']['Шаблон']['Ввод наблюдений']['Вкладка'];
+        
+        for (const tabKey in tabs) {
+            const tab = tabs[tabKey];
+            // Рекурсивно ищем поле с числовым значением
+            const fieldData = findFieldInStructure(tab, actualFieldName);
+            if (fieldData && fieldData['Числовое значение'] && fieldData['Числовое значение']['единица измерения']) {
+                return fieldData['Числовое значение']['единица измерения'];
+            }
+        }
+    } catch (error) {
+        console.warn("Ошибка при поиске единицы измерения в структуре GUI:", error);
+    }
+    
+    return null;
+}
+
+// Рекурсивная функция поиска поля в структуре
+function findFieldInStructure(structure, fieldName) {
+    if (!structure || typeof structure !== 'object') return null;
+    
+    // Если нашли поле с нужным именем
+    if (structure[fieldName]) {
+        return structure[fieldName];
+    }
+    
+    // Рекурсивно ищем во вложенных структурах
+    for (const key in structure) {
+        if (typeof structure[key] === 'object') {
+            const result = findFieldInStructure(structure[key], fieldName);
+            if (result) return result;
+        }
+    }
+    
+    return null;
+}
+
+// Функция для определения единиц измерения по имени поля (fallback)
+function getUnitByFieldName(fieldName) {
+    const fieldNameLower = fieldName.toLowerCase();
+    
+    const unitMappings = {
+        'артериальное давление': 'мм.рт.ст.',
+        'ад': 'мм.рт.ст.',
+        'систолическое': 'мм.рт.ст.',
+        'диастолическое': 'мм.рт.ст.',
+        'систолическое артериальное давление': 'мм.рт.ст.',
+        'диастолическое артериальное давление': 'мм.рт.ст.',
+        'температура': '°С',
+        'температура тела': '°С',
+        'частота сердечных сокращений': 'уд/мин',
+        'чсс': 'уд/мин',
+        'гемоглобин': 'г/л',
+        'лейкоциты': '× 10^9/л',
+        'количество лейкоцитов': '× 10^9/л',
+        'эритроциты': '× 10^12/л',
+        'количество эритроцитов': '× 10^12/л',
+        'возраст': 'лет',
+        'скорость клубочковой фильтрации': 'мл/мин/1,73м',
+        'скф': 'мл/мин/1,73м'
+    };
+    
+    for (const [key, unit] of Object.entries(unitMappings)) {
+        if (fieldNameLower.includes(key)) {
+            return unit;
+        }
+    }
+    
+    return null;
 }
 
 // Экспортируем функции для решателя
