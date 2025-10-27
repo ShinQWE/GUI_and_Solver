@@ -86,6 +86,10 @@ function loadPatientHistory(patientHistory) {
     try {
         // Очищаем текущие данные
         clearForm();
+
+        window.allTabsData = allTabsData; // Экспортируем обновленные данные
+        
+        showNotification("Данные истории болезни загружены в форму!", "success");
         
         // Извлекаем данные из структуры истории болезни
         const historyData = patientHistory["История болезни или наблюдений v.4"];

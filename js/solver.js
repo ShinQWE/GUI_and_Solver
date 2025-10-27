@@ -511,15 +511,21 @@ function generate_explanation(patient_data, knowledge_base) {
                                 }
 
                                 // Формируем вывод
-                                if (category_matched || match_score > 50) {
+                                if (category_matched || match_score > 0) {
                                     found_suitable_treatment = true;
                                     
-                                    if (category_matched) {
+                                    // Градация по проценту совпадения
+                                    if (match_score === 100 || category_matched) {
                                         result.push(`\n🎯 === ПОДХОДЯЩИЙ ВАРИАНТ ЛЕЧЕНИЯ ===`);
+                                    } else if (match_score > 70) {
+                                        result.push(`\n🟡 === ВЕРОЯТНО ПОДХОДЯЩИЙ ВАРИАНТ (совпадение: ${match_score.toFixed(0)}%) ===`);
+                                    } else if (match_score > 30) {
+                                        result.push(`\n🟠 === ВАРИАНТ ТРЕБУЕТ ДООБСЛЕДОВАНИЯ (совпадение: ${match_score.toFixed(0)}%) ===`);
                                     } else {
-                                        result.push(`\n⚠️ === ЧАСТИЧНО ПОДХОДЯЩИЙ ВАРИАНТ (совпадение: ${match_score.toFixed(0)}%) ===`);
+                                        result.push(`\n🔴 === ВАРИАНТ МАЛОВЕРОЯТЕН (совпадение: ${match_score.toFixed(0)}%) ===`);
                                     }
                                     
+                                    // Остальной код остается таким же...
                                     result.push(`🏥 Диагноз: ${disease_name}`);
                                     result.push(`📋 Вариант: ${variant_name}`);
                                     
@@ -536,14 +542,12 @@ function generate_explanation(patient_data, knowledge_base) {
                                     }
                                     
                                     result.push(`\n📈 Совпадение критериев: ${match_score.toFixed(0)}%`);
-                                } else {
-                                    result.push(`\n❌ === НЕПОДХОДЯЩИЙ ВАРИАНТ ===`);
-                                    result.push(`🏥 Диагноз: ${disease_name}`);
-                                    result.push(`📋 Вариант: ${variant_name}`);
                                     
-                                    if (factor_explanations.length > 0) {
-                                        result.push("\n📊 Причины несоответствия:");
-                                        factor_explanations.forEach(exp => result.push(`   ${exp}`));
+                                    // Рекомендации в зависимости от процента
+                                    if (match_score <= 30) {
+                                        result.push(`\n💡 Рекомендация: данный вариант маловероятен, рассмотрите другие варианты лечения`);
+                                    } else if (match_score <= 70) {
+                                        result.push(`\n💡 Рекомендация: необходимо заполнить недостающие данные для подтверждения варианта`);
                                     }
                                 }
                             }
@@ -577,6 +581,14 @@ function analyzeData() {
     if (!window.knowledgeBase) {
         if (window.showNotification) {
             window.showNotification("Сначала загрузите базу знаний!", "error");
+        }
+        return;
+    }
+
+    const patient_data = window.extract_patient_data ? window.extract_patient_data() : {};
+    if (Object.keys(patient_data).length === 0) {
+        if (window.showNotification) {
+            window.showNotification("Нет данных пациента! Загрузите историю болезни или заполните форму", "error");
         }
         return;
     }
