@@ -656,26 +656,32 @@ function renderJSON(data, container, skipHeaders = false, tabName) {
 }
 
 // Функция для рендеринга содержимого групп
+// Функция для рендеринга содержимого групп
 function renderGroupContent(groupData, container, groupName, tabName) {
     if (groupData && groupData['Наблюдение']) {
         for (const observationName in groupData['Наблюдение']) {
             const observationData = groupData['Наблюдение'][observationName];
             
+            const observationSection = document.createElement('div');
+            observationSection.classList.add('observation-section');
+            observationSection.style.marginBottom = '20px';
+            observationSection.style.padding = '15px';
+            observationSection.style.backgroundColor = '#fff';
+            observationSection.style.border = '1px solid #ddd';
+            observationSection.style.borderRadius = '5px';
+            
+            const observationHeader = document.createElement('h5');
+            observationHeader.textContent = observationName;
+            observationHeader.style.margin = '0 0 15px 0';
+            observationHeader.style.color = '#34495e';
+            observationHeader.style.fontSize = '16px';
+            observationHeader.style.fontWeight = 'bold';
+            observationHeader.style.borderBottom = '2px solid #3498db';
+            observationHeader.style.paddingBottom = '5px';
+            observationSection.appendChild(observationHeader);
+            
+            // Обработка характеристик для наблюдения
             if (observationData && observationData['Характеристика'] && Array.isArray(observationData['Характеристика'])) {
-                const observationSection = document.createElement('div');
-                observationSection.classList.add('observation-section');
-                observationSection.style.marginBottom = '15px';
-                observationSection.style.padding = '10px';
-                observationSection.style.backgroundColor = '#fff';
-                observationSection.style.border = '1px solid #ddd';
-                observationSection.style.borderRadius = '3px';
-                
-                const observationHeader = document.createElement('h5');
-                observationHeader.textContent = observationName;
-                observationHeader.style.margin = '0 0 10px 0';
-                observationHeader.style.color = '#34495e';
-                observationSection.appendChild(observationHeader);
-                
                 observationData['Характеристика'].forEach((characteristic, index) => {
                     if (characteristic) {
                         for (const charName in characteristic) {
@@ -693,22 +699,24 @@ function renderGroupContent(groupData, container, groupName, tabName) {
                             } else if (charData && charData['Числовое значение']) {
                                 const charDiv = document.createElement('div');
                                 charDiv.classList.add('characteristic-field');
-                                charDiv.style.marginBottom = '10px';
+                                charDiv.style.marginBottom = '15px';
                                 
                                 const label = document.createElement('label');
                                 label.textContent = `${charName}: `;
                                 label.style.fontWeight = 'bold';
                                 label.style.display = 'block';
-                                label.style.marginBottom = '5px';
+                                label.style.marginBottom = '8px';
+                                label.style.color = '#2c3e50';
                                 charDiv.appendChild(label);
                                 
                                 const input = document.createElement('input');
                                 input.type = 'number';
                                 input.name = fieldFullName;
-                                input.style.padding = '5px';
+                                input.style.padding = '8px';
                                 input.style.border = '1px solid #ccc';
-                                input.style.borderRadius = '3px';
-                                input.style.width = '200px';
+                                input.style.borderRadius = '4px';
+                                input.style.width = '250px';
+                                input.style.fontSize = '14px';
                                 
                                 if (allTabsData[tabName].data[fieldFullName] !== undefined) {
                                     input.value = allTabsData[tabName].data[fieldFullName];
@@ -723,9 +731,57 @@ function renderGroupContent(groupData, container, groupName, tabName) {
                                 if (charData['Числовое значение']['единица измерения']) {
                                     const unitSpan = document.createElement('span');
                                     unitSpan.textContent = ` ${charData['Числовое значение']['единица измерения']}`;
-                                    unitSpan.style.marginLeft = '5px';
+                                    unitSpan.style.marginLeft = '8px';
                                     unitSpan.style.color = '#666';
+                                    unitSpan.style.fontSize = '14px';
                                     charDiv.appendChild(unitSpan);
+                                }
+                                
+                                observationSection.appendChild(charDiv);
+                            } else if (charData && typeof charData === 'object') {
+                                // Обработка вложенных объектов без явного указания типа
+                                const charDiv = document.createElement('div');
+                                charDiv.classList.add('characteristic-field');
+                                charDiv.style.marginBottom = '15px';
+                                
+                                const label = document.createElement('label');
+                                label.textContent = `${charName}: `;
+                                label.style.fontWeight = 'bold';
+                                label.style.display = 'block';
+                                label.style.marginBottom = '8px';
+                                label.style.color = '#2c3e50';
+                                charDiv.appendChild(label);
+                                
+                                // Если есть качественные значения, создаем dropdown
+                                if (charData['Качественное значение']) {
+                                    createMultiSelectDropdown(
+                                        charDiv, 
+                                        '', 
+                                        charData['Качественное значение'], 
+                                        fieldFullName,
+                                        tabName
+                                    );
+                                } else {
+                                    // Иначе создаем текстовое поле
+                                    const input = document.createElement('input');
+                                    input.type = 'text';
+                                    input.name = fieldFullName;
+                                    input.placeholder = `Введите значение для ${charName}`;
+                                    input.style.padding = '8px';
+                                    input.style.border = '1px solid #ccc';
+                                    input.style.borderRadius = '4px';
+                                    input.style.width = '250px';
+                                    input.style.fontSize = '14px';
+                                    
+                                    if (allTabsData[tabName].data[fieldFullName] !== undefined) {
+                                        input.value = allTabsData[tabName].data[fieldFullName];
+                                    }
+                                    
+                                    input.addEventListener('input', function() {
+                                        allTabsData[tabName].data[fieldFullName] = this.value;
+                                    });
+                                    
+                                    charDiv.appendChild(input);
                                 }
                                 
                                 observationSection.appendChild(charDiv);
@@ -733,13 +789,29 @@ function renderGroupContent(groupData, container, groupName, tabName) {
                         }
                     }
                 });
-                
-                container.appendChild(observationSection);
+            } else if (observationData && typeof observationData === 'object') {
+                // Обработка случая, когда характеристик нет, но есть другие данные
+                for (const fieldName in observationData) {
+                    const fieldData = observationData[fieldName];
+                    const fieldFullName = `${observationName}_${fieldName}`;
+                    
+                    if (fieldData && fieldData['Качественное значение']) {
+                        createMultiSelectDropdown(
+                            observationSection, 
+                            fieldName, 
+                            fieldData['Качественное значение'], 
+                            fieldFullName,
+                            tabName
+                        );
+                    }
+                }
             }
+            
+            container.appendChild(observationSection);
         }
     }
     
-    // Специальная обработка для группы "Диурез"
+    // Специальная обработка для группы "Диурез" (оставляем существующую логику)
     if (groupName === "Диурез") {
         const diuresisSection = document.createElement('div');
         diuresisSection.classList.add('diuresis-section');
@@ -962,78 +1034,111 @@ function saveAllData() {
         for (const fieldName in allTabsData[tabName].data) {
             const fieldValue = allTabsData[tabName].data[fieldName];
             
-            if (fieldValue === null || fieldValue === undefined) {
+            if (fieldValue === null || fieldValue === undefined || fieldValue === '') {
                 continue;
             }
 
-            // Определяем группу для поля
-            let groupName = "Общие данные";
+            // СПЕЦИАЛЬНЫЕ РАЗДЕЛЫ - сохраняем структуру разделов
+            let sectionName = null;
             let actualFieldName = fieldName;
+            let groupName = null;
 
-            // Определяем observationName для группировки
-            let observationName = fieldName;
-            if (fieldName.includes("_")) {
+            // Определяем разделы для "Сведения о состоянии"
+            if (tabName === "Сведения о состоянии") {
+                const stateSections = {
+                    "Жалобы": ["Головная боль", "Приступ мигрени", "Головокружение", "Боль в местах ушибов", 
+                               "Костная крепитация", "Нарушение сна", "Сонливость", "Мышцы нижней конечности",
+                               "Боль в нижней конечности", "Боль в грудной клетке"],
+                    "Осмотр": ["Сознание", "Общее состояние", "Частота сердечных сокращений", "Артериальное давление",
+                              "Слизистая ротовой полости", "Кожа", "Отек мягких тканей", "Раздражительность",
+                              "Патологическая подвижность сустава", "Температура тела", 
+                              "Проприоцептивная чувствительность коленного сустава", "Подвижность в суставе"],
+                    "Опрос": ["Неготовность", "Чувство страха"]
+                };
+
+                for (const [section, fields] of Object.entries(stateSections)) {
+                    if (fields.includes(fieldName)) {
+                        sectionName = section;
+                        break;
+                    }
+                }
+            }
+
+            // Определяем разделы для "Сведения в динамике"
+            if (tabName === "Сведения в динамике") {
+                const dynamicSections = {
+                    "Анамнез заболевания": ["Опыт терапии", "Иммобилизация"],
+                    "Исследования": ["Скорость клубочковой фильтрации", "Анализ крови на гепатит С с определением генотипа",
+                                   "Диурез", "Гемоглобин", "Количество лейкоцитов", "Количество эритроцитов",
+                                   "Рентгенография"],
+                    "Назначение лечения": ["противовирусное", "органические нитраты короткого действия"],
+                    "Дневник наблюдений": ["Головокружение", "Боль в грудной клетке", "Чувство страха", 
+                                         "Сонливость", "Артериальное давление"]
+                };
+
+                for (const [section, fields] of Object.entries(dynamicSections)) {
+                    if (fields.includes(fieldName)) {
+                        sectionName = section;
+                        break;
+                    }
+                }
+            }
+
+            // УНИВЕРСАЛЬНАЯ ГРУППИРОВКА для полей с подчеркиванием
+            if (!sectionName && fieldName.includes("_")) {
                 const parts = fieldName.split("_");
-                observationName = parts[0]; // Первая часть как название наблюдения
-                actualFieldName = parts.slice(1).join("_"); // Остальное как название поля
+                if (parts.length >= 2) {
+                    groupName = parts[0];
+                    actualFieldName = parts.slice(1).join("_");
+                }
             }
 
-            // Определяем принадлежность к группам
-            if (fieldName.includes("Перелом верхней трети плечевой кости_")) {
-                groupName = "Расширенный клинический диагноз";
-                actualFieldName = fieldName.replace("Перелом верхней трети плечевой кости_", "");
-            } else if (fieldName.includes("Перелом лопатки_")) {
-                groupName = "Расширенный клинический диагноз";
-                actualFieldName = fieldName.replace("Перелом лопатки_", "");
-            } else if (fieldName.includes("Перелом ключицы_")) {
-                groupName = "Расширенный клинический диагноз";
-                actualFieldName = fieldName.replace("Перелом ключицы_", "");
-            } else if (fieldName.includes("Вывих ключицы_")) {
-                groupName = "Расширенный клинический диагноз";
-                actualFieldName = fieldName.replace("Вывих ключицы_", "");
-            } else if (fieldName === "Объем" || fieldName === "Качество мочи") {
+            // СПЕЦИАЛЬНЫЕ ГРУППЫ (для обратной совместимости)
+            const specialGroups = {
+                "Перелом верхней трети плечевой кости": "Расширенный клинический диагноз",
+                "Перелом лопатки": "Расширенный клинический диагноз", 
+                "Перелом ключицы": "Расширенный клинический диагноз",
+                "Вывих ключицы": "Расширенный клинический диагноз",
+                "Артроз плечевого сустава": "Расширенный клинический диагноз",
+                "Повреждение связок коленного сустава": "Расширенный клинический диагноз",
+                "Перелом проксимального отдела бедренной кости": "Расширенный клинический диагноз",
+                "Диурез": "Диурез"
+            };
+
+            // Проверяем специальные группы
+            for (const [specialGroup, targetGroup] of Object.entries(specialGroups)) {
+                if (fieldName.startsWith(specialGroup + "_")) {
+                    groupName = targetGroup;
+                    actualFieldName = fieldName.replace(specialGroup + "_", "");
+                    break;
+                }
+            }
+
+            // Также проверяем отдельные поля для специальных групп
+            if (fieldName === "Объем" || fieldName === "Качество мочи") {
                 groupName = "Диурез";
-            } else if (fieldName.includes("Диурез_")) {
-                groupName = "Диурез";
-                actualFieldName = fieldName.replace("Диурез_", "");
+                actualFieldName = fieldName;
             }
 
-            // Создаем группу если её нет
-            if (!structuredData[tabName][groupName]) {
-                structuredData[tabName][groupName] = {};
-            }
-
-            // Получаем единицу измерения из структуры GUI
+            // Получаем единицу измерения
             let unit = getUnitFromGUIStructure(tabName, fieldName, actualFieldName);
-            
-            // Если не нашли в структуре, используем эвристики как fallback
             if (!unit) {
                 unit = getUnitByFieldName(actualFieldName);
             }
 
-            // Сохраняем значение с правильной группировкой
-            if (Array.isArray(fieldValue)) {
-                // Для групповых полей создаем вложенную структуру
-                if (groupName !== "Общие данные") {
-                    if (!structuredData[tabName][groupName][observationName]) {
-                        structuredData[tabName][groupName][observationName] = {};
-                    }
-                    structuredData[tabName][groupName][observationName][actualFieldName] = {
-                        "Тип": "Множественный выбор",
-                        "Значение": fieldValue.join(', ')
-                    };
-                } else {
-                    structuredData[tabName][groupName][actualFieldName] = {
-                        "Тип": "Множественный выбор", 
-                        "Значение": fieldValue.join(', ')
-                    };
+            // СОХРАНЕНИЕ ДАННЫХ С ПРАВИЛЬНОЙ СТРУКТУРОЙ
+            if (sectionName) {
+                // СОХРАНЯЕМ В РАЗДЕЛЫ (Жалобы, Осмотр, Анамнез заболевания, Исследования и т.д.)
+                if (!structuredData[tabName][sectionName]) {
+                    structuredData[tabName][sectionName] = {};
                 }
-            } else if (typeof fieldValue === 'number') {
-                // Для групповых полей
-                if (groupName !== "Общие данные") {
-                    if (!structuredData[tabName][groupName][observationName]) {
-                        structuredData[tabName][groupName][observationName] = {};
-                    }
+
+                if (Array.isArray(fieldValue)) {
+                    structuredData[tabName][sectionName][fieldName] = {
+                        "Тип": "Выбор",
+                        "Значение": fieldValue.join(', ')
+                    };
+                } else if (typeof fieldValue === 'number') {
                     const fieldData = {
                         "Тип": "Числовое",
                         "Значение": fieldValue
@@ -1041,8 +1146,26 @@ function saveAllData() {
                     if (unit) {
                         fieldData["Единица измерения"] = unit;
                     }
-                    structuredData[tabName][groupName][observationName][actualFieldName] = fieldData;
+                    structuredData[tabName][sectionName][fieldName] = fieldData;
                 } else {
+                    structuredData[tabName][sectionName][fieldName] = {
+                        "Тип": "Текстовое",
+                        "Значение": fieldValue.toString()
+                    };
+                }
+
+            } else if (groupName) {
+                // СОХРАНЯЕМ В ГРУППЫ (для полей с подчеркиванием и специальных групп)
+                if (!structuredData[tabName][groupName]) {
+                    structuredData[tabName][groupName] = {};
+                }
+
+                if (Array.isArray(fieldValue)) {
+                    structuredData[tabName][groupName][actualFieldName] = {
+                        "Тип": "Выбор",
+                        "Значение": fieldValue.join(', ')
+                    };
+                } else if (typeof fieldValue === 'number') {
                     const fieldData = {
                         "Тип": "Числовое",
                         "Значение": fieldValue
@@ -1051,19 +1174,30 @@ function saveAllData() {
                         fieldData["Единица измерения"] = unit;
                     }
                     structuredData[tabName][groupName][actualFieldName] = fieldData;
-                }
-            } else {
-                // Для групповых полей
-                if (groupName !== "Общие данные") {
-                    if (!structuredData[tabName][groupName][observationName]) {
-                        structuredData[tabName][groupName][observationName] = {};
-                    }
-                    structuredData[tabName][groupName][observationName][actualFieldName] = {
+                } else {
+                    structuredData[tabName][groupName][actualFieldName] = {
                         "Тип": "Текстовое",
                         "Значение": fieldValue.toString()
                     };
+                }
+            } else {
+                // СОХРАНЯЕМ НАПРЯМУЮ (обычные поля без группировки)
+                if (Array.isArray(fieldValue)) {
+                    structuredData[tabName][fieldName] = {
+                        "Тип": "Выбор", 
+                        "Значение": fieldValue.join(', ')
+                    };
+                } else if (typeof fieldValue === 'number') {
+                    const fieldData = {
+                        "Тип": "Числовое",
+                        "Значение": fieldValue
+                    };
+                    if (unit) {
+                        fieldData["Единица измерения"] = unit;
+                    }
+                    structuredData[tabName][fieldName] = fieldData;
                 } else {
-                    structuredData[tabName][groupName][actualFieldName] = {
+                    structuredData[tabName][fieldName] = {
                         "Тип": "Текстовое",
                         "Значение": fieldValue.toString()
                     };
@@ -1072,7 +1206,7 @@ function saveAllData() {
         }
     }
 
-    // ⭐⭐ ВАЖНО: Копируем структурированные данные в выходной формат ⭐⭐
+    // Копируем структурированные данные в выходной формат
     ibData["Данные"] = JSON.parse(JSON.stringify(structuredData));
 
     // Проверка на пустые данные
@@ -1110,25 +1244,59 @@ function saveAllData() {
     
     showNotification("Все данные успешно сохранены!", "success");
 }
-
+// Новая функция для получения единиц измерения из структуры GUI
 // Новая функция для получения единиц измерения из структуры GUI
 function getUnitFromGUIStructure(tabName, fieldName, actualFieldName) {
     if (!jsonData || !jsonData['Описание GUI для ПС']) return null;
 
     try {
-        // Ищем поле в структуре GUI
         const tabs = jsonData['Описание GUI для ПС']['Шаблон']['Ввод наблюдений']['Вкладка'];
+        const currentTab = tabs[tabName];
         
-        for (const tabKey in tabs) {
-            const tab = tabs[tabKey];
-            // Рекурсивно ищем поле с числовым значением
-            const fieldData = findFieldInStructure(tab, actualFieldName);
-            if (fieldData && fieldData['Числовое значение'] && fieldData['Числовое значение']['единица измерения']) {
-                return fieldData['Числовое значение']['единица измерения'];
+        if (!currentTab) return null;
+
+        // Рекурсивный поиск с учетом контекста вкладки
+        function deepFindUnits(obj, targetField, currentPath = '') {
+            if (!obj || typeof obj !== 'object') return null;
+            
+            // Проверяем текущий уровень
+            for (const key in obj) {
+                const fullPath = currentPath ? `${currentPath}.${key}` : key;
+                
+                // Если нашли поле с нужным именем и у него есть числовое значение
+                if (key === targetField && obj[key] && obj[key]['Числовое значение']) {
+                    return obj[key]['Числовое значение']['единица измерения'];
+                }
+                
+                // Проверяем вложенные структуры, но пропускаем неподходящие пути
+                if (typeof obj[key] === 'object') {
+                    // Пропускаем структуры, которые не содержат нужных данных
+                    if (['место записи в документе', 'путь к узлу документа', 'Синонимы'].includes(key)) {
+                        continue;
+                    }
+                    
+                    // Если на вложенном уровне есть числовое значение с единицей измерения
+                    if (obj[key] && obj[key]['Числовое значение'] && obj[key]['Числовое значение']['единица измерения']) {
+                        // Проверяем, что это действительно наше поле, а не случайное совпадение
+                        if (key === targetField || fullPath.includes(targetField)) {
+                            return obj[key]['Числовое значение']['единица измерения'];
+                        }
+                    }
+                    
+                    // Рекурсивный поиск
+                    const result = deepFindUnits(obj[key], targetField, fullPath);
+                    if (result) return result;
+                }
             }
+            return null;
         }
+        
+        // Ищем только в текущей вкладке
+        const unit = deepFindUnits(currentTab, actualFieldName);
+        return unit;
+        
     } catch (error) {
-        console.warn("Ошибка при поиске единицы измерения в структуре GUI:", error);
+        console.warn("Ошибка при поиске единицы измерения:", error);
     }
     
     return null;
@@ -1155,32 +1323,45 @@ function findFieldInStructure(structure, fieldName) {
 }
 
 // Функция для определения единиц измерения по имени поля (fallback)
+// Функция для определения единиц измерения по имени поля (fallback)
 function getUnitByFieldName(fieldName) {
-    const fieldNameLower = fieldName.toLowerCase();
+    const fieldNameLower = fieldName.toLowerCase().trim();
     
-    const unitMappings = {
-        'артериальное давление': 'мм.рт.ст.',
-        'ад': 'мм.рт.ст.',
-        'систолическое': 'мм.рт.ст.',
-        'диастолическое': 'мм.рт.ст.',
-        'систолическое артериальное давление': 'мм.рт.ст.',
-        'диастолическое артериальное давление': 'мм.рт.ст.',
-        'температура': '°С',
-        'температура тела': '°С',
+    // Точные соответствия (высший приоритет)
+    const exactMatches = {
+        'возраст': 'лет',
+        'скорость клубочковой фильтрации': 'мл/мин/1,73м²',
+        'скф': 'мл/мин/1,73м²',
+        'гемоглобин': 'г/л',
+        'количество лейкоцитов': '× 10^9/л',
+        'лейкоциты': '× 10^9/л', 
+        'количество эритроцитов': '× 10^12/л',
+        'эритроциты': '× 10^12/л',
         'частота сердечных сокращений': 'уд/мин',
         'чсс': 'уд/мин',
-        'гемоглобин': 'г/л',
-        'лейкоциты': '× 10^9/л',
-        'количество лейкоцитов': '× 10^9/л',
-        'эритроциты': '× 10^12/л',
-        'количество эритроцитов': '× 10^12/л',
-        'возраст': 'лет',
-        'скорость клубочковой фильтрации': 'мл/мин/1,73м',
-        'скф': 'мл/мин/1,73м'
+        'температура тела': '°С',
+        'температура': '°С'
     };
     
-    for (const [key, unit] of Object.entries(unitMappings)) {
-        if (fieldNameLower.includes(key)) {
+    // Сначала проверяем точные совпадения
+    if (exactMatches[fieldNameLower]) {
+        return exactMatches[fieldNameLower];
+    }
+    
+    // Затем проверяем частичные совпадения (только для длинных названий)
+    const partialMatches = {
+        'артериальное давление': 'мм.рт.ст.',
+        'систолическое': 'мм.рт.ст.',
+        'диастолическое': 'мм.рт.ст.'
+    };
+    
+    for (const [key, unit] of Object.entries(partialMatches)) {
+        // Для частичных совпадений требуем, чтобы поле было достаточно длинным
+        // и содержало ключевое слово как отдельное слово
+        if (fieldNameLower.length > 10 && 
+            (fieldNameLower.includes(' ' + key + ' ') ||
+             fieldNameLower.startsWith(key + ' ') ||
+             fieldNameLower.endsWith(' ' + key))) {
             return unit;
         }
     }

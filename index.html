@@ -11,7 +11,11 @@
         <h1>Динамический GUI-Движок с Решателем</h1>
         
         <div class="action-buttons">
-            <input type="file" id="guiFileInput" accept=".json" />
+            <!-- ЗАМЕНА: убираем обычный input и делаем стилизованную кнопку -->
+            <label for="guiFileInput" class="file-input-label">
+                📋 Выберите Описание GUI
+                <input type="file" id="guiFileInput" accept=".json" style="display: none;" />
+            </label>
             <label for="knowledgeBaseFile" class="file-input-label">
                 📁 Загрузить базу знаний
                 <input type="file" id="knowledgeBaseFile" accept=".json" style="display: none;" />

@@ -320,3 +320,20 @@ h3 {
     font-size: 12px;
     margin-left: 8px;
 }
+
+.observation-section {
+    background: #f8f9fa !important;
+    border-left: 4px solid #3498db !important;
+}
+
+.characteristic-field {
+    margin: 10px 0;
+    padding: 8px;
+    background: white;
+    border-radius: 4px;
+}
+
+.group-section {
+    background: #f0f8ff !important;
+    border: 1px solid #b3d9ff !important;
+}
