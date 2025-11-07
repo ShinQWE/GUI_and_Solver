@@ -160,16 +160,6 @@ function initializeTabsData() {
         }
     }
     
-    // УБРАТЬ ДУБЛИРОВАНИЕ - закомментировать этот блок
-    /*
-    if (tempData["Сведения о состоянии"] && !tempData["Сведения при обращении"]) {
-        tempData["Сведения при обращении"] = { data: tempData["Сведения о состоянии"].data };
-    }
-    else if (tempData["Сведения при обращении"] && !tempData["Сведения о состоянии"]) {
-        tempData["Сведения о состоянии"] = { data: tempData["Сведения при обращении"].data };
-    }
-    */
-    
     allTabsData = tempData;
 }
 
@@ -576,9 +566,11 @@ function renderJSON(data, container, skipHeaders = false, tabName) {
                 
                 div.appendChild(wrapperDiv);
             }
+            // ОБНОВЛЕННЫЙ БЛОК: Все вершины меню теперь сворачиваются в синие кнопки
             else if (['Дневник наблюдений', 'Анамнез заболевания', 'Назначение лечения', 
                      'Жалобы', 'Осмотр', 'Опрос', 'Сведения паспортные', 
-                     'Сведения при обращении', 'Сведения в динамике'].includes(key)) {
+                     'Сведения при обращении', 'Сведения в динамике', 'Исследования',
+                     'Диагноз', 'Идентификация', 'История болезни'].includes(key)) {
                 const sectionDiv = document.createElement('div');
                 sectionDiv.classList.add('collapsible-section');
                 sectionDiv.style.marginBottom = '15px';
@@ -655,7 +647,6 @@ function renderJSON(data, container, skipHeaders = false, tabName) {
     }
 }
 
-// Функция для рендеринга содержимого групп
 // Функция для рендеринга содержимого групп
 function renderGroupContent(groupData, container, groupName, tabName) {
     if (groupData && groupData['Наблюдение']) {
@@ -1042,6 +1033,7 @@ function saveAllData() {
             let sectionName = null;
             let actualFieldName = fieldName;
             let groupName = null;
+            let parentFieldName = null;
 
             // Определяем разделы для "Сведения о состоянии"
             if (tabName === "Сведения о состоянии") {
@@ -1084,12 +1076,24 @@ function saveAllData() {
                 }
             }
 
-            // УНИВЕРСАЛЬНАЯ ГРУППИРОВКА для полей с подчеркиванием
+            // УНИВЕРСАЛЬНАЯ ГРУППИРОВКА для полей с подчеркиванием - СОХРАНЯЕМ ИЕРАРХИЮ
             if (!sectionName && fieldName.includes("_")) {
                 const parts = fieldName.split("_");
                 if (parts.length >= 2) {
+                    // Сохраняем полную иерархию
                     groupName = parts[0];
                     actualFieldName = parts.slice(1).join("_");
+                    
+                    // Для полей "Опыт терапии" создаем специальную структуру
+                    if (groupName === "Опыт терапии") {
+                        sectionName = "Анамнез заболевания";
+                        if (!structuredData[tabName][sectionName]) {
+                            structuredData[tabName][sectionName] = {};
+                        }
+                        if (!structuredData[tabName][sectionName][groupName]) {
+                            structuredData[tabName][sectionName][groupName] = {};
+                        }
+                    }
                 }
             }
 
@@ -1133,25 +1137,50 @@ function saveAllData() {
                     structuredData[tabName][sectionName] = {};
                 }
 
-                if (Array.isArray(fieldValue)) {
-                    structuredData[tabName][sectionName][fieldName] = {
-                        "Тип": "Выбор",
-                        "Значение": fieldValue.join(', ')
-                    };
-                } else if (typeof fieldValue === 'number') {
-                    const fieldData = {
-                        "Тип": "Числовое",
-                        "Значение": fieldValue
-                    };
-                    if (unit) {
-                        fieldData["Единица измерения"] = unit;
+                // ОСОБАЯ ОБРАБОТКА для "Опыт терапии" - сохраняем вложенную структуру
+                if (groupName === "Опыт терапии") {
+                    if (Array.isArray(fieldValue)) {
+                        structuredData[tabName][sectionName][groupName][actualFieldName] = {
+                            "Тип": "Выбор",
+                            "Значение": fieldValue.join(', ')
+                        };
+                    } else if (typeof fieldValue === 'number') {
+                        const fieldData = {
+                            "Тип": "Числовое",
+                            "Значение": fieldValue
+                        };
+                        if (unit) {
+                            fieldData["Единица измерения"] = unit;
+                        }
+                        structuredData[tabName][sectionName][groupName][actualFieldName] = fieldData;
+                    } else {
+                        structuredData[tabName][sectionName][groupName][actualFieldName] = {
+                            "Тип": "Текстовое",
+                            "Значение": fieldValue.toString()
+                        };
                     }
-                    structuredData[tabName][sectionName][fieldName] = fieldData;
                 } else {
-                    structuredData[tabName][sectionName][fieldName] = {
-                        "Тип": "Текстовое",
-                        "Значение": fieldValue.toString()
-                    };
+                    // Обычные поля в разделах
+                    if (Array.isArray(fieldValue)) {
+                        structuredData[tabName][sectionName][fieldName] = {
+                            "Тип": "Выбор",
+                            "Значение": fieldValue.join(', ')
+                        };
+                    } else if (typeof fieldValue === 'number') {
+                        const fieldData = {
+                            "Тип": "Числовое",
+                            "Значение": fieldValue
+                        };
+                        if (unit) {
+                            fieldData["Единица измерения"] = unit;
+                        }
+                        structuredData[tabName][sectionName][fieldName] = fieldData;
+                    } else {
+                        structuredData[tabName][sectionName][fieldName] = {
+                            "Тип": "Текстовое",
+                            "Значение": fieldValue.toString()
+                        };
+                    }
                 }
 
             } else if (groupName) {
@@ -1244,7 +1273,7 @@ function saveAllData() {
     
     showNotification("Все данные успешно сохранены!", "success");
 }
-// Новая функция для получения единиц измерения из структуры GUI
+
 // Новая функция для получения единиц измерения из структуры GUI
 function getUnitFromGUIStructure(tabName, fieldName, actualFieldName) {
     if (!jsonData || !jsonData['Описание GUI для ПС']) return null;
@@ -1322,7 +1351,6 @@ function findFieldInStructure(structure, fieldName) {
     return null;
 }
 
-// Функция для определения единиц измерения по имени поля (fallback)
 // Функция для определения единиц измерения по имени поля (fallback)
 function getUnitByFieldName(fieldName) {
     const fieldNameLower = fieldName.toLowerCase().trim();

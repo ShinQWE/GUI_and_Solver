@@ -1,36 +1,344 @@
+// Функции для приоритизации вариантов лечения
+function prioritize_treatment_variants(variants_data) {
+    if (!variants_data || typeof variantsants_data !== 'object') return variants_data;
+    
+    const variantsArray = [];
+    
+    // Преобразуем объект в массив для сортировки
+    for (const variant_name in variants_data) {
+        variantsArray.push({
+            name: variant_name,
+            data: variants_data[variant_name],
+            specificity: calculate_variant_specificity(variants_data[variant_name])
+        });
+    }
+    
+    // Сортируем по специфичности (более специфичные первыми)
+    variantsArray.sort((a, b) => b.specificity - a.specificity);
+    
+    // Преобразуем обратно в объект
+    const prioritized = {};
+    variantsArray.forEach(variant => {
+        prioritized[variant.name] = variant.data;
+    });
+    
+    return prioritized;
+}
+
+function calculate_variant_specificity(variant) {
+    if (!variant || !variant["Инструкция"]) return 0;
+    
+    let specificity = 0;
+    const instructions = variant["Инструкция"];
+    
+    for (const instrKey in instructions) {
+        const instruction = instructions[instrKey];
+        
+        // Категория пациента значительно увеличивает специфичность
+        if (instruction["Категория пациента"]) {
+            const category = instruction["Категория пациента"];
+            
+            // Факторы сильно увеличивают специфичность
+            if (category["Фактор"]) {
+                specificity += Object.keys(category["Фактор"]).length * 20;
+            }
+            
+            // Наблюдения увеличивают специфичность
+            if (category["Наблюдение"]) {
+                if (Array.isArray(category["Наблюдение"])) {
+                    specificity += category["Наблюдение"].length * 10;
+                } else if (typeof category["Наблюдение"] === 'object') {
+                    specificity += Object.keys(category["Наблюдение"]).length * 10;
+                }
+            }
+        }
+        
+        // Наличие плана лечения увеличивает специфичность
+        if (instruction["План лечебных действий"]) {
+            specificity += 15;
+        }
+        
+        // Отсутствие категории пациента - общий вариант (меньшая специфичность)
+        if (!instruction["Категория пациента"]) {
+            specificity -= 10;
+        }
+    }
+    
+    return Math.max(0, specificity);
+}
+
+// Функция для оценки соответствия варианта (более точная)
+function evaluate_variant_match(patient_data, instruction, variant_name) {
+    let match_score = 0;
+    let max_score = 0;
+    const explanations = [];
+    let has_contradictions = false;
+    let hard_contradiction = false;
+    
+    // 1. ПРОВЕРКА ПРОТИВОРЕЧИЙ (приоритет №1)
+    const contradictions = check_contradictions(patient_data, instruction);
+    if (contradictions.length > 0) {
+        explanations.push(...contradictions);
+        has_contradictions = true;
+        hard_contradiction = true;
+        match_score = 0;
+        
+        // Если есть жесткие противоречия, сразу возвращаем результат
+        return {
+            score: 0,
+            explanations,
+            has_contradictions: true,
+            hard_contradiction: true,
+            has_treatment: !!instruction["План лечебных действий"]
+        };
+    }
+    
+    // 2. ПРОВЕРКА ФАКТОРОВ СООТВЕТСТВИЯ
+    if (instruction["Категория пациента"]) {
+        const category = instruction["Категория пациента"];
+        
+        // Проверяем факторы
+        if (category["Фактор"]) {
+            const factors = category["Фактор"];
+            for (const factor_name in factors) {
+                const factor_data = factors[factor_name];
+                
+                if (factor_data && "value" in factor_data) {
+                    max_score += 10;
+                    const kb_values = factor_data["value"];
+                    const patient_value = extract_patient_value(patient_data, factor_name);
+                    
+                    if (patient_value !== null) {
+                        const patient_normalized = normalize_value(patient_value);
+                        const kb_normalized = Array.isArray(kb_values) ? 
+                            kb_values.map(v => normalize_value(v)) : 
+                            [normalize_value(kb_values)];
+                        
+                        let factor_matched = false;
+                        for (const kb_val of kb_normalized) {
+                            if (patient_normalized.includes(kb_val) || kb_val.includes(patient_normalized)) {
+                                factor_matched = true;
+                                break;
+                            }
+                        }
+                        
+                        if (factor_matched) {
+                            match_score += 10;
+                            explanations.push(`✅ Фактор '${factor_name}' совпадает`);
+                        } else {
+                            explanations.push(`❌ Фактор '${factor_name}' не совпадает`);
+                            has_contradictions = true;
+                        }
+                    } else {
+                        explanations.push(`❓ Фактор '${factor_name}' неизвестен`);
+                        // Неизвестные факторы не уменьшают счет, но и не увеличивают
+                    }
+                }
+            }
+        }
+        
+        // Наблюдения не влияют на счет соответствия, только отображаются
+        if (category["Наблюдение"]) {
+            const observations = category["Наблюдение"];
+            if (Array.isArray(observations)) {
+                observations.forEach(obs => {
+                    if (obs && typeof obs === 'object') {
+                        for (const obs_name in obs) {
+                            const patient_val = extract_patient_value(patient_data, obs_name);
+                            if (patient_val !== null) {
+                                explanations.push(`📊 Наблюдение '${obs_name}': ${patient_val}`);
+                            } else {
+                                explanations.push(`❓ Наблюдение '${obs_name}' неизвестно`);
+                            }
+                        }
+                    }
+                });
+            } else if (typeof observations === 'object') {
+                for (const obs_name in observations) {
+                    const patient_val = extract_patient_value(patient_data, obs_name);
+                    if (patient_val !== null) {
+                        explanations.push(`📊 Наблюдение '${obs_name}': ${patient_val}`);
+                    } else {
+                        explanations.push(`❓ Наблюдение '${obs_name}' неизвестно`);
+                    }
+                }
+            }
+        }
+    } else {
+        // Вариант без категории пациента - базовый уровень соответствия
+        match_score = 5;
+        max_score = 10;
+        explanations.push(`📝 Общий вариант лечения`);
+    }
+    
+    // 3. УЧЕТ ПЛАНА ЛЕЧЕНИЯ
+    if (instruction["План лечебных действий"]) {
+        match_score += 5;
+        max_score += 5;
+        explanations.push(`💊 Имеется план лечения`);
+    } else {
+        explanations.push(`ℹ️ План лечения не указан`);
+    }
+    
+    // 4. РАСЧЕТ ИТОГОВОГО ПРОЦЕНТА
+    let final_score = 0;
+    if (hard_contradiction) {
+        final_score = 0;
+    } else if (max_score > 0) {
+        final_score = (match_score / max_score) * 100;
+    } else {
+        // Если нет критериев, но есть лечение - базовый уровень
+        final_score = instruction["План лечебных действий"] ? 30 : 0;
+    }
+    
+    // 5. КОРРЕКЦИЯ СЧЕТА ДЛЯ ОБЩИХ ВАРИАНТОВ
+    if (!instruction["Категория пациента"] && instruction["План лечебных действий"]) {
+        // Общие варианты с лечением не должны иметь высокий счет
+        final_score = Math.min(final_score, 50);
+    }
+    
+    return {
+        score: final_score,
+        explanations,
+        has_contradictions: has_contradictions || hard_contradiction,
+        hard_contradiction,
+        has_treatment: !!instruction["План лечебных действий"]
+    };
+}
+
+// ФУНКЦИЯ ПРОВЕРКИ ПРОТИВОРЕЧИЙ
+function check_contradictions(patient_data, instruction) {
+    console.log("=== ПРОВЕРКА ПРОТИВОРЕЧИЙ ===");
+    
+    const contradictions = [];
+    
+    if (!instruction["Категория пациента"] || !instruction["Категория пациента"]["Фактор"]) {
+        console.log("Нет факторов для проверки противоречий");
+        return contradictions;
+    }
+    
+    const factors = instruction["Категория пациента"]["Фактор"];
+    console.log("Факторы для проверки:", factors);
+    
+    for (const factor_name in factors) {
+        const factor_data = factors[factor_name];
+        console.log("Проверяем фактор:", factor_name, factor_data);
+        
+        if (factor_data && "value" in factor_data) {
+            const kb_values = factor_data["value"];
+            const patient_value = extract_patient_value(patient_data, factor_name);
+            console.log("Значение из базы:", kb_values, "Значение пациента:", patient_value);
+            
+            if (patient_value !== null) {
+                const patient_normalized = normalize_value(patient_value);
+                const kb_normalized = Array.isArray(kb_values) ? 
+                    kb_values.map(v => normalize_value(v)) : 
+                    [normalize_value(kb_values)];
+                
+                console.log("Нормализованные значения - пациент:", patient_normalized, "база:", kb_normalized);
+                
+                // ПРОВЕРКА ПРОТИВОРЕЧИЙ ДЛЯ КЛЮЧЕВЫХ ФАКТОРОВ
+                for (const kb_val of kb_normalized) {
+                    console.log("Сравниваем:", patient_normalized, "с", kb_val);
+                    
+                    // КРИТИЧЕСКИЕ ПРОТИВОРЕЧИЯ
+                    if (factor_name === "Трансплантация печени") {
+                        if (kb_val.includes("не проводилась") && patient_normalized.includes("проводилась")) {
+                            contradictions.push(`🚫 Противоречие: '${factor_name}' - у пациента: ${patient_value}, но требуется: ${kb_val}`);
+                            console.log("НАЙДЕНО ПРОТИВОРЕЧИЕ: Трансплантация!");
+                            break;
+                        }
+                    }
+                    
+                    if (factor_name === "Цирроз печени") {
+                        if (kb_val.includes("отсутствует") && patient_normalized.includes("имеется")) {
+                            contradictions.push(`🚫 Противоречие: '${factor_name}' - у пациента: ${patient_value}, но требуется: ${kb_val}`);
+                            console.log("НАЙДЕНО ПРОТИВОРЕЧИЕ: Цирроз!");
+                            break;
+                        }
+                    }
+                    
+                    // ОБЩАЯ ЛОГИКА ДЛЯ ОТСУТСТВИЯ/НАЛИЧИЯ
+                    if ((kb_val.includes("не ") || kb_val.includes("без ") || kb_val.includes("отсутствует")) && 
+                        (patient_normalized.includes("проводилась") || patient_normalized.includes("имеется") || patient_normalized.includes("есть"))) {
+                        contradictions.push(`🚫 Противоречие: '${factor_name}' - у пациента: ${patient_value}, но требуется: ${kb_val}`);
+                        console.log("НАЙДЕНО ОБЩЕЕ ПРОТИВОРЕЧИЕ!");
+                        break;
+                    }
+                }
+            } else {
+                console.log("Значение пациента неизвестно для фактора:", factor_name);
+            }
+        } else if (factor_data && "Характеристика" in factor_data) {
+            console.log("Фактор с характеристиками:", factor_name, factor_data["Характеристика"]);
+            // Обработка вложенных характеристик
+            const characteristics = factor_data["Характеристика"];
+            for (const char_name in characteristics) {
+                const char_data = characteristics[char_name];
+                if (char_data && "Качественное значение" in char_data) {
+                    const kb_values = Object.keys(char_data["Качественное значение"]);
+                    const combined_name = `${factor_name}_${char_name}`;
+                    const patient_value = extract_patient_value(patient_data, combined_name);
+                    
+                    console.log("Характеристика:", combined_name, "значения базы:", kb_values, "значение пациента:", patient_value);
+                    
+                    // Аналогичная проверка противоречий для характеристик
+                    if (patient_value !== null) {
+                        const patient_normalized = normalize_value(patient_value);
+                        for (const kb_val of kb_values) {
+                            const kb_normalized = normalize_value(kb_val);
+                            
+                            if ((kb_normalized.includes("не ") || kb_normalized.includes("без ")) && 
+                                (patient_normalized.includes("имеется") || patient_normalized.includes("есть"))) {
+                                contradictions.push(`🚫 Противоречие: '${combined_name}' - у пациента: ${patient_value}, но требуется: ${kb_val}`);
+                                console.log("НАЙДЕНО ПРОТИВОРЕЧИЕ В ХАРАКТЕРИСТИКЕ!");
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    console.log("Найдено противоречий:", contradictions);
+    return contradictions;
+}
 // Решатель - функции анализа данных
 
 function normalize_diagnosis_name(diagnosis) {
-    if (!diagnosis) {
+    if (!diagnosis) return "";
+    
+    // ЕСЛИ ДИАГНОЗ - МАССИВ, ИЩЕМ ПЕРВЫЙ ПОДХОДЯЩИЙ
+    if (Array.isArray(diagnosis)) {
+        for (const diag of diagnosis) {
+            const normalized = normalize_single_diagnosis(diag);
+            if (normalized) return normalized;
+        }
         return "";
     }
+    
+    return normalize_single_diagnosis(diagnosis);
+}
 
-    // Если diagnosis - массив, берем первый элемент
-    if (Array.isArray(diagnosis)) {
-        if (diagnosis.length === 0) {
-            return "";
-        }
-        diagnosis = diagnosis[0]; // Берем первый диагноз из массива
-    }
-
-    // Убеждаемся, что diagnosis - строка
+function normalize_single_diagnosis(diagnosis) {
     diagnosis = String(diagnosis).toLowerCase().trim();
     
-    const replacements = {
-        'аг': 'артериальная гипертензия',
-        'гб': 'гипертоническая болезнь',
-        'ибс': 'ишемическая болезнь сердца',
-        'хвгс': 'хронический вирусный гепатит c',
-        'хгс': 'хронический гепатит c',
-        'хронический вирусный гепатит c': 'хвгс',
+    const mappings = {
+        'хвгс': 'хвгс',
+        'хронический вирусный гепатит c': 'хвгс', 
+        'аг': 'аг',
         'артериальная гипертензия': 'аг',
-        'ишемическая болезнь сердца': 'ибс',
-        'переломы проксимального отдела бедренной кости': 'переломы проксимального отдела бедренной кости' // добавить явное соответствие
+        'ибс': 'стабильная ибс',
+        'ишемическая болезнь сердца': 'стабильная ибс',
+        'мигрень': 'мигрень'
     };
     
-    for (const [short, full] of Object.entries(replacements)) {
-        diagnosis = diagnosis.replace(short, full);
+    for (const [key, value] of Object.entries(mappings)) {
+        if (diagnosis.includes(key)) {
+            return value;
+        }
     }
+    
     return diagnosis;
 }
 
@@ -94,13 +402,12 @@ function find_disease_node(knowledge_base, diagnosis) {
 }
 
 function extract_patient_value(patient_data, field_name) {
-     // Прямое совпадение
+    console.log("Поиск поля:", field_name, "в данных:", patient_data);
+    
+    // Прямое совпадение
     if (field_name in patient_data) {
         const value = patient_data[field_name];
-        // ЕСЛИ ЗНАЧЕНИЕ - МАССИВ, БЕРЕМ ПЕРВЫЙ ЭЛЕМЕНТ
-        if (Array.isArray(value)) {
-            return value.length > 0 ? value[0] : null;
-        }
+        console.log("Прямое совпадение найдено:", value);
         return value;
     }
 
@@ -108,31 +415,38 @@ function extract_patient_value(patient_data, field_name) {
     const lower_field = field_name.toLowerCase().replace(/\s+/g, "");
     for (const key in patient_data) {
         if (key.toLowerCase().replace(/\s+/g, "") === lower_field) {
-            return patient_data[key]; // Возвращаем как есть
+            console.log("Совпадение без пробелов найдено:", patient_data[key]);
+            return patient_data[key];
         }
     }
 
-    // Поиск в значениях (только для строковых значений)
-    for (const key in patient_data) {
-        let value = patient_data[key];
-        // Если значение - массив, преобразуем в строку для поиска
-        if (Array.isArray(value)) {
-            value = value.join(', ');
-        }
-        if (typeof value === 'string' && value.toLowerCase().includes(field_name.toLowerCase())) {
-            return value;
+    // Поиск по ключевым словам для важных полей
+    const important_fields = {
+        'трансплантация': 'Трансплантация печени',
+        'цирроз': 'Цирроз печени', 
+        'опыт терапии': 'Опыт терапии',
+        'пвт': 'ПВТ (противовирусной терапии)'
+    };
+    
+    for (const [key, field] of Object.entries(important_fields)) {
+        if (field_name.toLowerCase().includes(key)) {
+            if (field in patient_data) {
+                console.log("Найдено по ключевому слову:", field, "=", patient_data[field]);
+                return patient_data[field];
+            }
         }
     }
 
+    console.log("Поле не найдено:", field_name);
     return null;
 }
 
 function normalize_value(value) {
     if (value === null || value === undefined) return "";
     
-    // ЕСЛИ ЗНАЧЕНИЕ - МАССИВ, БЕРЕМ ПЕРВЫЙ ЭЛЕМЕНТ ДЛЯ СРАВНЕНИЯ
+    // ЕСЛИ ЗНАЧЕНИЕ - МАССИВ, РАБОТАЕМ СО ВСЕМИ ЭЛЕМЕНТАМИ
     if (Array.isArray(value)) {
-        return value.length > 0 ? String(value[0]).toLowerCase().trim() : "";
+        return value.map(v => String(v).toLowerCase().trim()).join('|');
     }
     
     return String(value).toLowerCase().trim();
@@ -151,144 +465,42 @@ function match_patient_factors(patient_data, category_data) {
             for (const factor_name in factors) {
                 const factor_data = factors[factor_name];
                 
-                if (factor_data && typeof factor_data === 'object') {
-                    if ("value" in factor_data) {
-                        total_factors++;
-                        const kb_values = factor_data["value"];
-                        const patient_value = extract_patient_value(patient_data, factor_name);
+                if (factor_data && typeof factor_data === 'object' && "value" in factor_data) {
+                    total_factors++;
+                    const kb_values = factor_data["value"];
+                    const patient_value = extract_patient_value(patient_data, factor_name);
 
-                        if (Array.isArray(patient_value)) {
-                            // Для массивов проверяем, содержит ли массив нужное значение
-                            const patient_array = patient_value.map(v => normalize_value(v));
-                            const kb_values_normalized = Array.isArray(kb_values) ? 
-                                kb_values.map(v => normalize_value(v)) : 
-                                [normalize_value(kb_values)];
-                            
-                            let found_match = false;
-                            for (const kb_val of kb_values_normalized) {
-                                if (patient_array.some(patient_val => 
-                                    patient_val.includes(kb_val) || kb_val.includes(patient_val))) {
-                                    found_match = true;
-                                    break;
-                                }
-                            }
-                            
-                            if (found_match) {
-                                explanations.push(`✅ Фактор '${factor_name}' совпадает: ${patient_value.join(', ')}`);
-                                matched_factors++;
-                            } else {
-                                explanations.push(`❌ Фактор '${factor_name}' не совпадает (нужно: ${kb_values}, у пациента: ${patient_value.join(', ')})`);
-                                matched = false;
-                            }
-                            continue; // переходим к следующему фактору
-                        }
-
-                        if (patient_value === null) {
-                            explanations.push(`❌ Фактор '${factor_name}' неизвестен`);
-                            matched = false;
-                        } else if (Array.isArray(kb_values)) {
-                            const kb_values_normalized = kb_values.map(v => normalize_value(v));
-                            const patient_value_normalized = normalize_value(patient_value);
-                            
-                            let found_match = false;
-                            for (const kb_val of kb_values_normalized) {
-                                if (patient_value_normalized.includes(kb_val) || kb_val.includes(patient_value_normalized)) {
-                                    found_match = true;
-                                    break;
-                                }
-                            }
-                            
-                            if (!found_match) {
-                                explanations.push(`❌ Фактор '${factor_name}' не совпадает (нужно: ${kb_values.join(', ')}, у пациента: ${patient_value})`);
-                                matched = false;
-                            } else {
-                                explanations.push(`✅ Фактор '${factor_name}' совпадает: ${patient_value}`);
-                                matched_factors++;
-                            }
-                        } else {
-                            const kb_value_normalized = normalize_value(kb_values);
-                            const patient_value_normalized = normalize_value(patient_value);
-                            
-                            if (!patient_value_normalized.includes(kb_value_normalized) && 
-                                !kb_value_normalized.includes(patient_value_normalized)) {
-                                explanations.push(`❌ Фактор '${factor_name}' не совпадает (нужно: ${kb_values}, у пациента: ${patient_value})`);
-                                matched = false;
-                            } else {
-                                explanations.push(`✅ Фактор '${factor_name}' совпадает: ${patient_value}`);
-                                matched_factors++;
-                            }
-                        }
-                    } else if ("Характеристика" in factor_data) {
-                        const characteristics = factor_data["Характеристика"];
+                    if (patient_value !== null) {
+                        const patient_normalized = normalize_value(patient_value);
+                        const kb_normalized = Array.isArray(kb_values) ? 
+                            kb_values.map(v => normalize_value(v)) : 
+                            [normalize_value(kb_values)];
                         
-                        if (characteristics && typeof characteristics === 'object') {
-                            for (const char_name in characteristics) {
-                                total_factors++;
-                                const char_data = characteristics[char_name];
-                                
-                                if (char_data && "Качественное значение" in char_data) {
-                                    const kb_values = Object.keys(char_data["Качественное значение"]);
-                                    const combined_name = `${factor_name}_${char_name}`;
-                                    const patient_value = extract_patient_value(patient_data, combined_name);
-
-                                    if (patient_value === null) {
-                                        // Пробуем найти значение по отдельным полям
-                                        const separate_value = extract_patient_value(patient_data, char_name);
-                                        if (separate_value !== null) {
-                                            const kb_values_normalized = kb_values.map(v => normalize_value(v));
-                                            const separate_value_normalized = normalize_value(separate_value);
-                                            
-                                            let found_match = false;
-                                            for (const kb_val of kb_values_normalized) {
-                                                if (separate_value_normalized.includes(kb_val) || 
-                                                    kb_val.includes(separate_value_normalized)) {
-                                                    found_match = true;
-                                                    break;
-                                                }
-                                            }
-                                            
-                                            if (found_match) {
-                                                explanations.push(`✅ Характеристика '${char_name}' совпадает: ${separate_value}`);
-                                                matched_factors++;
-                                            } else {
-                                                explanations.push(`❌ Характеристика '${char_name}' не совпадает (нужно: ${kb_values.join(', ')}, у пациента: ${separate_value})`);
-                                                matched = false;
-                                            }
-                                        } else {
-                                            explanations.push(`❌ Характеристика '${char_name}' неизвестна`);
-                                            matched = false;
-                                        }
-                                    } else {
-                                        const kb_values_normalized = kb_values.map(v => normalize_value(v));
-                                        const patient_value_normalized = normalize_value(patient_value);
-                                        
-                                        let found_match = false;
-                                        for (const kb_val of kb_values_normalized) {
-                                            if (patient_value_normalized.includes(kb_val) || 
-                                                kb_val.includes(patient_value_normalized)) {
-                                                found_match = true;
-                                                break;
-                                            }
-                                        }
-                                        
-                                        if (found_match) {
-                                            explanations.push(`✅ Характеристика '${combined_name}' совпадает: ${patient_value}`);
-                                            matched_factors++;
-                                        } else {
-                                            explanations.push(`❌ Характеристика '${combined_name}' не совпадает (нужно: ${kb_values.join(', ')}, у пациента: ${patient_value})`);
-                                            matched = false;
-                                        }
-                                    }
-                                }
+                        let found_match = false;
+                        for (const kb_val of kb_normalized) {
+                            if (patient_normalized.includes(kb_val) || kb_val.includes(patient_normalized)) {
+                                found_match = true;
+                                break;
                             }
                         }
+                        
+                        if (found_match) {
+                            explanations.push(`✅ Фактор '${factor_name}' совпадает: ${patient_value}`);
+                            matched_factors++;
+                        } else {
+                            explanations.push(`❌ Фактор '${factor_name}' не совпадает (нужно: ${kb_values}, у пациента: ${patient_value})`);
+                            matched = false;
+                        }
+                    } else {
+                        explanations.push(`❌ Фактор '${factor_name}' неизвестен`);
+                        matched = false;
                     }
                 }
             }
         }
     }
 
-    // Обработка наблюдений - ТЕПЕРЬ ОНИ ТОЖЕ УЧИТЫВАЮТСЯ КАК ОБЯЗАТЕЛЬНЫЕ ФАКТОРЫ
+    // Обработка наблюдений (только отображение)
     if (category_data && "Наблюдение" in category_data) {
         const observations = category_data["Наблюдение"];
         
@@ -296,109 +508,16 @@ function match_patient_factors(patient_data, category_data) {
             observations.forEach(obs => {
                 if (obs && typeof obs === 'object') {
                     for (const obs_name in obs) {
-                        total_factors++;
                         const obs_data = obs[obs_name];
-                        if (obs_data && "Числовое значение" in obs_data) {
-                            const patient_val = extract_patient_value(patient_data, obs_name);
-                            if (patient_val !== null) {
-                                explanations.push(`📊 Наблюдение '${obs_name}': ${patient_val}`);
-                                matched_factors++;
-                                
-                                // Проверка диапазона значений
-                                const num_val = Number(patient_val);
-                                const num_data = obs_data["Числовое значение"];
-                                if (!isNaN(num_val) && num_data) {
-                                    if (num_data["нижняя граница"] !== undefined && num_val < num_data["нижняя граница"]) {
-                                        explanations.push(`⚠️ Значение '${obs_name}' ниже нормы`);
-                                    }
-                                    if (num_data["верхняя граница"] !== undefined && num_val > num_data["верхняя граница"]) {
-                                        explanations.push(`⚠️ Значение '${obs_name}' выше нормы`);
-                                    }
-                                }
-                            } else {
-                                explanations.push(`❌ Наблюдение '${obs_name}' неизвестно`);
-                                matched = false;
-                            }
-                        } else if (obs_data && "Качественное значение" in obs_data) {
-                            const patient_val = extract_patient_value(patient_data, obs_name);
-                            const expected_values = Object.keys(obs_data["Качественное значение"]);
-                            
-                            if (patient_val !== null) {
-                                const patient_val_normalized = normalize_value(patient_val);
-                                let value_matched = false;
-                                
-                                for (const expected_val of expected_values) {
-                                    if (patient_val_normalized.includes(normalize_value(expected_val)) || 
-                                        normalize_value(expected_val).includes(patient_val_normalized)) {
-                                        value_matched = true;
-                                        break;
-                                    }
-                                }
-                                
-                                if (value_matched) {
-                                    explanations.push(`✅ Наблюдение '${obs_name}' совпадает: ${patient_val}`);
-                                    matched_factors++;
-                                } else {
-                                    explanations.push(`❌ Наблюдение '${obs_name}' не совпадает (ожидалось: ${expected_values.join(', ')}, получено: ${patient_val})`);
-                                    matched = false;
-                                }
-                            } else {
-                                explanations.push(`❌ Наблюдение '${obs_name}' неизвестно`);
-                                matched = false;
-                            }
+                        const patient_val = extract_patient_value(patient_data, obs_name);
+                        
+                        if (patient_val !== null) {
+                            explanations.push(`📊 Наблюдение '${obs_name}': ${patient_val}`);
                         }
                     }
                 }
             });
-        } else if (observations && typeof observations === 'object') {
-            for (const obs_name in observations) {
-                total_factors++;
-                const obs_data = observations[obs_name];
-                if (obs_data && "Числовое значение" in obs_data) {
-                    const patient_val = extract_patient_value(patient_data, obs_name);
-                    if (patient_val !== null) {
-                        explanations.push(`📊 Наблюдение '${obs_name}': ${patient_val}`);
-                        matched_factors++;
-                    } else {
-                        explanations.push(`❌ Наблюдение '${obs_name}' неизвестно`);
-                        matched = false;
-                    }
-                } else if (obs_data && "Качественное значение" in obs_data) {
-                    const patient_val = extract_patient_value(patient_data, obs_name);
-                    const expected_values = Object.keys(obs_data["Качественное значение"]);
-                    
-                    if (patient_val !== null) {
-                        const patient_val_normalized = normalize_value(patient_val);
-                        let value_matched = false;
-                        
-                        for (const expected_val of expected_values) {
-                            if (patient_val_normalized.includes(normalize_value(expected_val)) || 
-                                normalize_value(expected_val).includes(patient_val_normalized)) {
-                                value_matched = true;
-                                break;
-                            }
-                        }
-                        
-                        if (value_matched) {
-                            explanations.push(`✅ Наблюдение '${obs_name}' совпадает: ${patient_val}`);
-                            matched_factors++;
-                        } else {
-                            explanations.push(`❌ Наблюдение '${obs_name}' не совпадает (ожидалось: ${expected_values.join(', ')}, получено: ${patient_val})`);
-                            matched = false;
-                        }
-                    } else {
-                        explanations.push(`❌ Наблюдение '${obs_name}' неизвестно`);
-                        matched = false;
-                    }
-                }
-            }
         }
-    }
-
-    // ВАЖНО: Если есть обязательные поля (факторы или наблюдения), но ни одно не заполнено - вариант не подходит
-    if (total_factors > 0 && matched_factors === 0) {
-        matched = false;
-        explanations.push(`❌ Все обязательные поля не заполнены (${total_factors} полей)`);
     }
 
     return [matched, explanations, matched_factors, total_factors];
@@ -545,14 +664,18 @@ function generate_explanation(patient_data, knowledge_base) {
 
     const result = [];
     let found_suitable_treatment = false;
+    const all_treatments = [];
 
     // Проверяем варианты течения и стадии
     const sections_to_check = ["Вариант течения (функциональный класс)", "Стадия"];
     
     for (const section of sections_to_check) {
         if (section in disease_node && typeof disease_node[section] === 'object') {
-            for (const variant_name in disease_node[section]) {
-                const variant_data = disease_node[section][variant_name];
+            // ПРИОРИТИЗИРУЕМ варианты лечения
+            const prioritizedVariants = prioritize_treatment_variants(disease_node[section]);
+            
+            for (const variant_name in prioritizedVariants) {
+                const variant_data = prioritizedVariants[variant_name];
                 
                 if (variant_data && typeof variant_data === 'object' && "Инструкция" in variant_data) {
                     const instructions = variant_data["Инструкция"];
@@ -563,72 +686,29 @@ function generate_explanation(patient_data, knowledge_base) {
                             
                             if (instruction && typeof instruction === 'object') {
                                 const treatments = [];
-                                let category_matched = false;
-                                let factor_explanations = [];
-                                let match_score = 0;
-                                let total_factors = 0;
-
+                                
                                 // Извлекаем план лечения если есть
                                 if ("План лечебных действий" in instruction) {
                                     const plan = instruction["План лечебных действий"];
                                     const extracted_treatments = extract_treatment_plan(plan);
                                     treatments.push(...extracted_treatments);
                                 }
-
-                                // Проверяем категорию пациента
-                                if ("Категория пациента" in instruction) {
-                                    const category = instruction["Категория пациента"];
-                                    [category_matched, factor_explanations, matched_factors, total_factors] = match_patient_factors(patient_data, category);
-                                    
-                                    // // Подсчитываем процент совпадения
-                                    // total_factors = factor_explanations.length;
-                                    // const matched_factors = factor_explanations.filter(exp => exp.includes('✅')).length;
-                                    // match_score = total_factors > 0 ? (matched_factors / total_factors) * 100 : 0;
-                                } else {
-                                    // Если категории нет, считаем подходящим
-                                    category_matched = true;
-                                    match_score = 100;
-                                }
-
-                                // Формируем вывод
-                                if (category_matched || match_score > 0) {
+                                
+                                // ОЦЕНИВАЕМ соответствие варианта
+                                const match_result = evaluate_variant_match(patient_data, instruction, variant_name);
+                                
+                                // Формируем вывод только если есть лечение ИЛИ хорошее соответствие
+                                if (treatments.length > 0 || match_result.score >= 50) {
                                     found_suitable_treatment = true;
                                     
-                                    // Градация по проценту совпадения
-                                    if (match_score === 100 || category_matched) {
-                                        result.push(`\n🎯 === ПОДХОДЯЩИЙ ВАРИАНТ ЛЕЧЕНИЯ ===`);
-                                    } else if (match_score > 70) {
-                                        result.push(`\n🟡 === ВЕРОЯТНО ПОДХОДЯЩИЙ ВАРИАНТ (совпадение: ${match_score.toFixed(0)}%) ===`);
-                                    } else if (match_score > 30) {
-                                        result.push(`\n🟠 === ВАРИАНТ ТРЕБУЕТ ДООБСЛЕДОВАНИЯ (совпадение: ${match_score.toFixed(0)}%) ===`);
-                                    } else {
-                                        result.push(`\n🔴 === ВАРИАНТ МАЛОВЕРОЯТЕН (совпадение: ${match_score.toFixed(0)}%) ===`);
-                                    }
-                                    
-                                    // Остальной код остается таким же...
-                                    result.push(`🏥 Диагноз: ${disease_name}`);
-                                    result.push(`📋 Вариант: ${variant_name}`);
-                                    
-                                    if (treatments.length > 0) {
-                                        result.push("\n💡 Рекомендуемое лечение:");
-                                        treatments.forEach(treatment => result.push(`   ${treatment}`));
-                                    } else {
-                                        result.push("\n💡 Информация о лечении: требуется уточнение");
-                                    }
-
-                                    if (factor_explanations.length > 0) {
-                                        result.push("\n📊 Анализ критериев:");
-                                        factor_explanations.forEach(exp => result.push(`   ${exp}`));
-                                    }
-                                    
-                                    result.push(`\n📈 Совпадение критериев: ${match_score.toFixed(0)}%`);
-                                    
-                                    // Рекомендации в зависимости от процента
-                                    if (match_score <= 30) {
-                                        result.push(`\n💡 Рекомендация: данный вариант маловероятен, рассмотрите другие варианты лечения`);
-                                    } else if (match_score <= 70) {
-                                        result.push(`\n💡 Рекомендация: необходимо заполнить недостающие данные для подтверждения варианта`);
-                                    }
+                                    // Сохраняем лечение для итогового анализа
+                                    all_treatments.push({
+                                        variant_name,
+                                        treatments,
+                                        match_score: match_result.score,
+                                        explanations: match_result.explanations,
+                                        has_contradictions: match_result.has_contradictions
+                                    });
                                 }
                             }
                         }
@@ -637,13 +717,67 @@ function generate_explanation(patient_data, knowledge_base) {
             }
         }
     }
+    
+    // СОРТИРУЕМ и ВЫВОДИМ результаты по убыванию соответствия
+    all_treatments.sort((a, b) => b.match_score - a.match_score);
+    
+    all_treatments.forEach(treatment => {
+    // Определяем тип вывода на основе процента совпадения и противоречий
+    let header_type = "";
+    
+    if (treatment.hard_contradiction) {
+        header_type = "🚫 === НЕПОДХОДЯЩИЙ ВАРИАНТ ===";
+    } else if (treatment.match_score === 100 && !treatment.has_contradictions) {
+        header_type = "🎯 === ОПТИМАЛЬНЫЙ ВАРИАНТ ЛЕЧЕНИЯ ===";
+    } else if (treatment.match_score >= 80 && !treatment.has_contradictions) {
+        header_type = "✅ === ПОДХОДЯЩИЙ ВАРИАНТ ЛЕЧЕНИЯ ===";
+    } else if (treatment.match_score >= 60 || treatment.treatments.length > 0) {
+        header_type = `🟡 === ВОЗМОЖНЫЙ ВАРИАНТ (совпадение: ${treatment.match_score.toFixed(0)}%) ===`;
+    } else if (treatment.match_score >= 30) {
+        header_type = `🟠 === ВАРИАНТ ТРЕБУЕТ УТОЧНЕНИЯ (совпадение: ${treatment.match_score.toFixed(0)}%) ===`;
+    } else {
+        header_type = `🔴 === МАЛОВЕРОЯТНЫЙ ВАРИАНТ (совпадение: ${treatment.match_score.toFixed(0)}%) ===`;
+    }
+    
+    result.push(`\n${header_type}`);
+    result.push(`🏥 Диагноз: ${disease_name}`);
+    result.push(`📋 Вариант: ${treatment.variant_name}`);
+    
+    if (treatment.treatments.length > 0 && !treatment.hard_contradiction) {
+        result.push("\n💡 Рекомендуемое лечение:");
+        treatment.treatments.forEach(treatment_line => result.push(`   ${treatment_line}`));
+    }
+    
+    if (treatment.explanations.length > 0) {
+        result.push("\n📊 Анализ критериев:");
+        treatment.explanations.forEach(exp => result.push(`   ${exp}`));
+    }
+    
+    if (!treatment.hard_contradiction) {
+        result.push(`\n📈 Совпадение критериев: ${treatment.match_score.toFixed(0)}%`);
+    }
+    
+    // Рекомендации
+    if (treatment.hard_contradiction) {
+        result.push(`\n💡 Рекомендация: вариант противопоказан`);
+    } else if (treatment.match_score < 50) {
+        result.push(`\n💡 Рекомендация: необходимо уточнить данные пациента для этого варианта`);
+    } else if (treatment.match_score < 80) {
+        result.push(`\n💡 Рекомендация: вариант требует дополнительного обследования`);
+    }
+});
 
     if (!found_suitable_treatment) {
-        result.push("\n❌ Не найдено полностью подходящих вариантов лечения.");
+        result.push("\n❌ Не найдено подходящих вариантов лечения.");
         result.push("💡 Рекомендации:");
         result.push("   - Проверьте введенные данные пациента");
         result.push("   - Убедитесь, что все необходимые поля заполнены");
-        result.push("   - Рассмотрите частично подходящие варианты выше");
+        result.push("   - Рассмотрите консультацию специалиста");
+    } else if (all_treatments.length > 1) {
+        result.push("\n💡 ИТОГОВАЯ РЕКОМЕНДАЦИЯ:");
+        const best_treatment = all_treatments[0];
+        result.push(`   Наиболее подходящий вариант: "${best_treatment.variant_name}"`);
+        result.push(`   Уверенность: ${best_treatment.match_score.toFixed(0)}%`);
     }
 
     // Добавляем общую информацию о пациенте
@@ -651,7 +785,12 @@ function generate_explanation(patient_data, knowledge_base) {
     result.push(`   Диагноз: ${diagnosis}`);
     if (patient_data["Возраст"]) result.push(`   Возраст: ${patient_data["Возраст"]} лет`);
     if (patient_data["Пол"]) result.push(`   Пол: ${patient_data["Пол"]}`);
-    if (patient_data["Сопутствующий диагноз"]) result.push(`   Сопутствующие заболевания: ${patient_data["Сопутствующий диагноз"]}`);
+    if (patient_data["Сопутствующий диагноз"]) {
+        const comorbidities = Array.isArray(patient_data["Сопутствующий диагноз"]) ? 
+            patient_data["Сопутствующий диагноз"].join(', ') : 
+            patient_data["Сопутствующий диагноз"];
+        result.push(`   Сопутствующие заболевания: ${comorbidities}`);
+    }
 
     return result.join("\n");
 }
@@ -915,3 +1054,4 @@ function debugPatientData() {
         console.log("Результат анализа:", explanation);
     }
 }
+
