@@ -337,3 +337,19 @@ h3 {
     background: #f0f8ff !important;
     border: 1px solid #b3d9ff !important;
 }
+
+
+
+
+.btn-ai {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    padding: 12px 20px;
+    margin: 5px;
+}
+
+.btn-ai:hover {
+    background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+    transform: translateY(-2px);
+}

@@ -953,3 +953,191 @@ function extract_patient_data() {
 
 window.showNotification = showNotification;
 window.extract_patient_data = extract_patient_data;
+
+
+// AI ИНТЕГРАЦИЯ - добавьте эти функции
+
+// 1. Добавьте обработчик кнопки
+document.addEventListener('DOMContentLoaded', function() {
+    const aiButton = document.getElementById('aiRecommendationsButton');
+    if (aiButton) {
+        aiButton.addEventListener('click', getAIRecommendations);
+        console.log("✅ Кнопка AI-рекомендаций зарегистрирована");
+    } else {
+        console.log("❌ Кнопка AI-рекомендаций не найдена");
+    }
+});
+
+// 2. Основная функция AI-рекомендаций
+async function getAIRecommendations() {
+    console.log("🔄 Запуск AI-рекомендаций...");
+    
+    try {
+        showNotification("🔄 Запрос к AI-ассистенту...", "success");
+        
+        // Проверяем есть ли данные
+        const patientData = extract_patient_data();
+        console.log("Данные пациента:", patientData);
+        
+        if (Object.keys(patientData).length === 0) {
+            showNotification("❌ Нет данных пациента для анализа!", "error");
+            return;
+        }
+        
+        // Форматируем данные для AI
+        const formattedData = formatForAIAssistant(patientData);
+        console.log("Форматированные данные:", formattedData);
+        
+        // Вызываем AI
+        showNotification("📡 Отправка данных в AI-ассистент...", "success");
+        const recommendations = await callAIAssistant(formattedData);
+        
+        // Показываем результаты
+        showAIResults(recommendations, patientData);
+        showNotification("✅ AI-рекомендации получены!", "success");
+        
+    } catch (error) {
+        console.error("❌ Ошибка AI-анализа:", error);
+        showNotification("Ошибка: " + error.message, "error");
+    }
+}
+
+// 3. Форматирование данных для AI
+function formatForAIAssistant(patientData) {
+    const ibId = "ИБ_" + new Date().getTime();
+    
+    const formattedData = {
+        "История болезни или наблюдений v.4": {
+            [ibId]: {
+                "дата обращения": new Date().toLocaleString('ru-RU'),
+                "Данные": {
+                    "Сведения при обращении": {}
+                }
+            }
+        }
+    };
+    
+    const targetSection = formattedData["История болезни или наблюдений v.4"][ibId]["Данные"]["Сведения при обращении"];
+    
+    // Преобразуем данные
+    for (const tabName in allTabsData) {
+        for (const fieldName in allTabsData[tabName].data) {
+            const value = allTabsData[tabName].data[fieldName];
+            if (value !== null && value !== undefined && value !== '') {
+                targetSection[fieldName] = {
+                    "Тип": Array.isArray(value) ? "Выбор" : 
+                          typeof value === 'number' ? "Числовое" : "Текстовое",
+                    "Значение": Array.isArray(value) ? value.join(', ') : value.toString()
+                };
+            }
+        }
+    }
+    
+    // Добавляем обязательные поля
+    if (!targetSection["Клинический диагноз"]) {
+        targetSection["Клинический диагноз"] = {
+            "Тип": "Текстовое",
+            "Значение": "Диагноз не указан"
+        };
+    }
+    
+    return formattedData;
+}
+
+// 4. Вызов AI-ассистента
+async function callAIAssistant(patientJSON) {
+    const API_URL = 'http://127.0.0.1:5000/api/analyze';
+    
+    console.log("📡 Отправка запроса к AI...");
+    
+    try {
+        const response = await fetch(API_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(patientJSON)
+        });
+        
+        console.log("📨 Ответ получен, статус:", response.status);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        console.log("📊 Результат AI:", result);
+        
+        if (result.success) {
+            return result.recommendations;
+        } else {
+            throw new Error(result.error || 'Неизвестная ошибка AI-ассистента');
+        }
+    } catch (error) {
+        console.error('❌ Ошибка вызова AI:', error);
+        
+        let errorMessage = 'Ошибка при получении AI-рекомендаций: ';
+        
+        if (error.message.includes('Failed to fetch')) {
+            errorMessage += 'Сервер AI-ассистента недоступен. Убедитесь, что сервер запущен.';
+        } else {
+            errorMessage += error.message;
+        }
+        
+        throw new Error(errorMessage);
+    }
+}
+
+// 5. Показ результатов
+function showAIResults(recommendations, patientData) {
+    const resultsDiv = document.getElementById('results');
+    const analysisResultsDiv = document.getElementById('analysisResults');
+    
+    if (!resultsDiv || !analysisResultsDiv) {
+        console.error("❌ Не найдены элементы для отображения результатов");
+        showNotification("❌ Не найдено место для отображения результатов", "error");
+        return;
+    }
+    
+    const formattedRecommendations = recommendations.replace(/\n/g, '<br>');
+    
+    analysisResultsDiv.innerHTML = `
+        <div class="analysis-result ai-recommendations">
+            <div style="background: linear-gradient(135deg, #f0f8ff 0%, #e6f3ff 100%); 
+                       padding: 20px; border-radius: 8px; margin-top: 15px; 
+                       border-left: 5px solid #4169e1; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+                <h3 style="color: #4169e1; margin-top: 0; display: flex; align-items: center;">
+                    🤖 AI-рекомендации
+                    <span style="margin-left: auto; font-size: 12px; color: #666;">
+                        ${new Date().toLocaleString('ru-RU')}
+                    </span>
+                </h3>
+                <div style="line-height: 1.6; font-family: Arial, sans-serif;">
+                    ${formattedRecommendations}
+                </div>
+            </div>
+            
+            <details style="margin-top: 15px;">
+                <summary style="cursor: pointer; color: #666; font-size: 14px;">
+                    📊 Показать переданные данные
+                </summary>
+                <div style="margin-top: 10px;">
+                    <pre style="white-space: pre-wrap; background: #f8f9fa; padding: 10px; 
+                               border-radius: 4px; margin-top: 10px; max-height: 200px; 
+                               overflow-y: auto; font-size: 11px;">
+${JSON.stringify(patientData, null, 2)}
+                    </pre>
+                </div>
+            </details>
+        </div>
+    `;
+    
+    resultsDiv.style.display = 'block';
+    resultsDiv.scrollIntoView({ behavior: 'smooth' });
+}
+
+// 6. Сделаем функции глобальными
+window.getAIRecommendations = getAIRecommendations;
+window.formatForAIAssistant = formatForAIAssistant;
+window.callAIAssistant = callAIAssistant;
+window.showAIResults = showAIResults;
