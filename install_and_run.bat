@@ -8,18 +8,27 @@ python --version > nul 2>&1 || (echo ❌ Установите Python 3.8+ && pau
 ollama --version > nul 2>&1 || (echo ❌ Установите Ollama && pause && exit)
 
 echo [2/6] Установка AI моделей...
-ollama pull llama3.2:1b
+ollama pull mistral:7b
 ollama pull nomic-embed-text
 
 echo [3/6] Установка зависимостей...
-pip install flask flask-cors
+pip install flask flask-cors torch requests
 
-echo [4/6] Запуск системы...
+echo [4/6] Запуск Ollama сервера...
 start "Ollama" /B cmd /c "ollama serve"
-timeout /t 5
+echo ⏳ Ожидаем 10 секунд для запуска Ollama...
+timeout /t 10 /nobreak > nul
+
+echo [5/6] Запуск AI сервера...
 start "AI Server" /B cmd /c "cd /d %~dp0 && python smart_ai_api.py"  
-timeout /t 3
+timeout /t 5 /nobreak > nul
+
+echo [6/6] Запуск интерфейса...
 start "" "index.html"
 
-echo ✅ Установка завершена! Используйте start_system.bat для след. запусков
+echo.
+echo ✅ Установка завершена!
+echo 🤖 Используется модель: mistral:7b
+echo 💡 Для следующих запусков используйте: start_system.bat
+echo.
 pause

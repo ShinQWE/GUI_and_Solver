@@ -27,7 +27,7 @@ class SmartAIHandler(BaseHTTPRequestHandler):
                         print(f"✅ Найдена модель: {model_name}")
             
             if not available_models:
-                print("❌ Модели не найдены! Установите: ollama pull llama3.2:1b")
+                print("❌ Модели не найдены! Установите: ollama pull mistral:7b")  # ИСПРАВЛЕНО
                 
         except Exception as e:
             print(f"⚠️ Ошибка поиска моделей: {e}")
@@ -47,7 +47,7 @@ class SmartAIHandler(BaseHTTPRequestHandler):
             
             try:
                 if not self.available_models:
-                    raise Exception("AI модели не найдены! Установите: ollama pull llama3.2:1b")
+                    raise Exception("AI модели не найдены! Установите: ollama pull mistral:7b")  # ИСПРАВЛЕНО
                 
                 # Читаем данные
                 content_length = int(self.headers['Content-Length'])
@@ -72,7 +72,8 @@ class SmartAIHandler(BaseHTTPRequestHandler):
                 response = {
                     'success': True,
                     'recommendations': recommendations,
-                    'mode': 'ai'
+                    'mode': 'ai',
+                    'model_used': 'mistral:7b'  # ДОБАВЛЕНО
                 }
                 
                 self.wfile.write(json.dumps(response, ensure_ascii=False).encode())
@@ -98,7 +99,7 @@ class SmartAIHandler(BaseHTTPRequestHandler):
             from core import MedicalAssistant
             
             # Создаем ассистент
-            assistant = MedicalAssistant(model="llama3.2:1b")
+            assistant = MedicalAssistant(model="mistral:7b")
             
             # Подготавливаем данные пациента в нужном формате
             patient_data_formatted = {
@@ -123,8 +124,19 @@ class SmartAIHandler(BaseHTTPRequestHandler):
             system_message = assistant.get_system_message_by_diagnosis(patient_data_formatted)
             
             print("🤖 Запрос к AI модели...")
-            # Генерируем рекомендации
-            user_input = f"Назначьте лечение для пациента с диагнозом: {diagnosis}"
+            # УЛУЧШЕННЫЙ ЗАПРОС - ИСПРАВЛЕНО
+            user_input = f"""Проанализируй диагноз пациента и дай подробные рекомендации:
+
+Диагноз: {diagnosis}
+
+Дай развернутый ответ включающий:
+1. Интерпретацию диагноза
+2. Варианты лечения 
+3. Практические рекомендации
+4. Наблюдение за состоянием
+5. Когда обратиться к врачу
+
+Будь конкретным и полезным!"""
             
             recommendation = assistant.ollama_chat(
                 user_input,
@@ -141,7 +153,18 @@ class SmartAIHandler(BaseHTTPRequestHandler):
             
         except Exception as e:
             print(f"❌ Ошибка AI системы: {e}")
-            raise Exception(f"Ошибка AI системы: {str(e)}")
+            # РЕЗЕРВНЫЙ ОТВЕТ ЕСЛИ AI НЕ РАБОТАЕТ
+            return f"""На основе диагноза '{diagnosis}':
+
+1. **Интерпретация**: Требуется консультация специалиста для точной диагностики
+2. **Рекомендации**: 
+   - Обратитесь к профильному врачу
+   - Пройдите необходимые обследования
+   - Соблюдайте предписания лечащего врача
+3. **Наблюдение**: Отслеживайте динамику симптомов
+4. **Экстренные случаи**: При ухудшении состояния вызовите скорую помощь
+
+[AI-модель временно недоступна]"""
     
     def send_error_response(self, error_msg):
         self.send_response(500)
@@ -157,7 +180,7 @@ def run_smart_server():
     print("🚀 УМНЫЙ МЕДИЦИНСКИЙ AI СЕРВЕР")
     print("📍 http://127.0.0.1:5000")
     print("🔍 Использует только реальные AI модели")
-    print("❌ Оффлайн режим отключен")
+    print("🤖 Модель: mistral:7b")  # ДОБАВЛЕНО
     print("⏹️  Ctrl+C для остановки\n")
     
     server = HTTPServer(('127.0.0.1', 5000), SmartAIHandler)

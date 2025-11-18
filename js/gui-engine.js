@@ -968,11 +968,21 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-// 2. Основная функция AI-рекомендаций
+// 2. Основная функция AI-рекомендаций - ИСПРАВЛЕННАЯ ВЕРСИЯ
 async function getAIRecommendations() {
     console.log("🔄 Запуск AI-рекомендаций...");
     
+    const loadingElement = document.getElementById('aiLoading');
+    const aiButton = document.getElementById('aiRecommendationsButton');
+    
     try {
+        // Показываем индикатор загрузки и блокируем кнопку
+        if (loadingElement) loadingElement.style.display = 'block';
+        if (aiButton) {
+            aiButton.disabled = true;
+            aiButton.innerHTML = '⏳ Генерация...';
+        }
+        
         showNotification("🔄 Запрос к AI-ассистенту...", "success");
         
         // Проверяем есть ли данные
@@ -988,17 +998,28 @@ async function getAIRecommendations() {
         const formattedData = formatForAIAssistant(patientData);
         console.log("Форматированные данные:", formattedData);
         
-        // Вызываем AI
-        showNotification("📡 Отправка данных в AI-ассистент...", "success");
-        const recommendations = await callAIAssistant(formattedData);
+        // Вызываем AI и получаем ВЕСЬ результат
+        showNotification("📡 Отправка данных в AI-ассистенту...", "success");
+        const aiResult = await callAIAssistant(formattedData);
         
-        // Показываем результаты
-        showAIResults(recommendations, patientData);
-        showNotification("✅ AI-рекомендации получены!", "success");
+        // Проверяем успешность и показываем результаты
+        if (aiResult.success) {
+            showAIResults(aiResult.recommendations, patientData);
+            showNotification("✅ AI-рекомендации получены!", "success");
+        } else {
+            throw new Error(aiResult.error || 'Неизвестная ошибка AI');
+        }
         
     } catch (error) {
         console.error("❌ Ошибка AI-анализа:", error);
         showNotification("Ошибка: " + error.message, "error");
+    } finally {
+        // Всегда скрываем индикатор и разблокируем кнопку
+        if (loadingElement) loadingElement.style.display = 'none';
+        if (aiButton) {
+            aiButton.disabled = false;
+            aiButton.innerHTML = '🤖 AI-рекомендации';
+        }
     }
 }
 
@@ -1044,7 +1065,7 @@ function formatForAIAssistant(patientData) {
     return formattedData;
 }
 
-// 4. Вызов AI-ассистента
+// 4. Вызов AI-ассистента - ИСПРАВЛЕННАЯ ВЕРСИЯ
 async function callAIAssistant(patientJSON) {
     const API_URL = 'http://127.0.0.1:5000/api/analyze';
     
@@ -1068,11 +1089,8 @@ async function callAIAssistant(patientJSON) {
         const result = await response.json();
         console.log("📊 Результат AI:", result);
         
-        if (result.success) {
-            return result.recommendations;
-        } else {
-            throw new Error(result.error || 'Неизвестная ошибка AI-ассистента');
-        }
+        return result; // ВОЗВРАЩАЕМ ВЕСЬ РЕЗУЛЬТАТ, а не только recommendations
+        
     } catch (error) {
         console.error('❌ Ошибка вызова AI:', error);
         

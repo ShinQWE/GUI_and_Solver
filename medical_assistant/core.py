@@ -14,7 +14,7 @@ import shutil
 
 
 class MedicalAssistant:
-    def __init__(self, model="llama3.2:1b"):
+    def __init__(self, model="mistral:7b"):
         """
         Инициализация медицинского ассистента
 
@@ -444,7 +444,7 @@ class MedicalAssistant:
         response = self.client.chat.completions.create(
             model=ollama_model,
             messages=[{"role": "system", "content": prompt}],
-            max_tokens=1000,
+            max_tokens=4000,
             n=1,
             temperature=0.1,
             timeout=200
@@ -498,7 +498,7 @@ class MedicalAssistant:
         response = self.client.chat.completions.create(
             model=ollama_model,
             messages=messages,
-            max_tokens=300,  # Увеличил лимит токенов для более полного ответа
+            max_tokens=4000,  # Увеличил лимит токенов для более полного ответа
             temperature=0.1  # Уменьшаем температуру для более детерминированного ответа
         )
 

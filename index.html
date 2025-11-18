@@ -44,6 +44,20 @@
             <button id="aiRecommendationsButton" class="btn" style="background: #667eea; color: white;">
                 🤖 Получить AI-рекомендации
             </button>
+            <!-- После кнопки AI-рекомендаций добавьте: -->
+            <div id="aiLoading" style="display: none; text-align: center; margin: 10px 0; padding: 10px; background: #e3f2fd; border-radius: 5px;">
+                <div style="display: flex; align-items: center; justify-content: center; gap: 10px;">
+                    <div class="spinner" style="width: 20px; height: 20px; border: 2px solid #f3f3f3; border-top: 2px solid #2196F3; border-radius: 50%; animation: spin 1s linear infinite;"></div>
+                    <span style="color: #2196F3; font-weight: bold;">🤖 AI генерирует рекомендации... Подождите</span>
+                </div>
+            </div>
+
+            <style>
+            @keyframes spin {
+                0% { transform: rotate(0deg); }
+                100% { transform: rotate(360deg); }
+            }
+            </style>
         </div>
         
         <div id="notification" style="color: green; margin-top: 10px;"></div>
