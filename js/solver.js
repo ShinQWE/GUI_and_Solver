@@ -213,19 +213,63 @@ function extract_patient_diagnoses(patient_data) {
     const diagnoses = new Set();
     const possible_diagnosis_fields = ["Клинический диагноз", "Диагноз", "Основной диагноз", "Сопутствующий диагноз", "Заключительный диагноз", "диагноз"];
     
+    console.log("🔍 Поиск диагнозов в данных:", patient_data);
+    
     possible_diagnosis_fields.forEach(field => {
         if (patient_data[field]) {
-            if (Array.isArray(patient_data[field])) {
-                patient_data[field].forEach(diagnosis => {
-                    if (diagnosis && typeof diagnosis === 'string' && diagnosis.trim()) diagnoses.add(diagnosis.trim());
-                    else if (diagnosis && typeof diagnosis === 'object') find_diagnoses_in_object(diagnosis, diagnoses);
-                });
-            } else if (typeof patient_data[field] === 'string') diagnoses.add(patient_data[field].trim());
-            else if (typeof patient_data[field] === 'object') find_diagnoses_in_object(patient_data[field], diagnoses);
+            console.log(`Найдено поле ${field}:`, patient_data[field]);
+            let diagnosis_value = patient_data[field];
+            
+            // Если значение - объект (может быть из-за структуры GUI)
+            if (typeof diagnosis_value === 'object' && diagnosis_value !== null) {
+                // Пытаемся извлечь значение из объекта
+                if (diagnosis_value["Значение"] !== undefined) {
+                    diagnosis_value = diagnosis_value["Значение"];
+                    console.log(`Извлечено Значение из объекта:`, diagnosis_value);
+                } else if (diagnosis_value["value"] !== undefined) {
+                    diagnosis_value = diagnosis_value["value"];
+                } else if (diagnosis_value["Текст"] !== undefined) {
+                    diagnosis_value = diagnosis_value["Текст"];
+                } else {
+                    // Если объект, но нет понятных ключей, попробуем найти строку
+                    const stringValues = [];
+                    function extractStrings(obj) {
+                        for (const key in obj) {
+                            if (typeof obj[key] === 'string' && obj[key].trim().length > 0) {
+                                stringValues.push(obj[key]);
+                            } else if (typeof obj[key] === 'object' && obj[key] !== null) {
+                                extractStrings(obj[key]);
+                            }
+                        }
+                    }
+                    extractStrings(diagnosis_value);
+                    if (stringValues.length > 0) {
+                        diagnosis_value = stringValues[0];
+                        console.log(`Извлечена строка из объекта:`, diagnosis_value);
+                    }
+                }
+            }
+            
+            // Обработка полученного значения
+            if (diagnosis_value) {
+                if (Array.isArray(diagnosis_value)) {
+                    diagnosis_value.forEach(diagnosis => {
+                        if (diagnosis && typeof diagnosis === 'string' && diagnosis.trim()) {
+                            diagnoses.add(diagnosis.trim());
+                            console.log(`Добавлен диагноз из массива: ${diagnosis.trim()}`);
+                        }
+                    });
+                } else if (typeof diagnosis_value === 'string' && diagnosis_value.trim()) {
+                    diagnoses.add(diagnosis_value.trim());
+                    console.log(`Добавлен диагноз: ${diagnosis_value.trim()}`);
+                }
+            }
         }
     });
     
-    return Array.from(diagnoses).filter(d => d.length > 0);
+    const result = Array.from(diagnoses).filter(d => d.length > 0);
+    console.log("📋 Найденные диагнозы:", result);
+    return result;
 }
 
 function find_diagnoses_in_object(obj, diagnoses) {
