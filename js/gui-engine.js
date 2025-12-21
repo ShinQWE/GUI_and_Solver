@@ -1,9 +1,21 @@
 // Глобальный объект для хранения данных всех вкладок
 let allTabsData = {
-    "Сведения паспортные": { data: {} },
-    "Сведения при обращении": { data: {} },
-    "Сведения о состоянии": { data: {} },
-    "Сведения в динамике": { data: {} }
+    "Сведения паспортные": { 
+        data: {},
+        hierarchicalData: {}
+    },
+    "Сведения при обращении": { 
+        data: {},
+        hierarchicalData: {}
+    },
+    "Сведения о состоянии": { 
+        data: {},
+        hierarchicalData: {}
+    },
+    "Сведения в динамике": { 
+        data: {},
+        hierarchicalData: {}
+    }
 };
 
 let jsonData = {};
@@ -621,7 +633,7 @@ function renderObservation(observationData, observationName, container, tabName)
     container.appendChild(observationSection);
 }
 
-function renderCharacteristicField(charData, charName, fieldFullName, container, tabName) {
+function renderCharacteristicField(charData, charName, observationName, container, tabName) {
     const charDiv = document.createElement('div');
     charDiv.classList.add('characteristic-field');
     charDiv.style.marginBottom = '15px';
@@ -633,6 +645,9 @@ function renderCharacteristicField(charData, charName, fieldFullName, container,
     label.style.marginBottom = '8px';
     label.style.color = '#2c3e50';
     charDiv.appendChild(label);
+    
+    // Имя поля формируем как observationName_charName
+    const fieldFullName = `${observationName}_${charName}`;
     
     if (charData && charData['Качественное значение']) {
         createMultiSelectDropdown(charDiv, '', charData['Качественное значение'], fieldFullName, tabName);
@@ -730,7 +745,92 @@ function renderCharacteristics(data, key, container, tabName) {
             characteristicContainer.style.padding = '10px';
             characteristicContainer.style.border = '1px solid #ddd';
             characteristicContainer.style.borderRadius = '5px';
-            renderJSON(characteristicGroup, characteristicContainer, true, tabName);
+            
+            // Рендерим каждую характеристику в группе
+            for (const charName in characteristicGroup) {
+                const charData = characteristicGroup[charName];
+                const fieldFullName = `${key}_${charName}`;
+                
+                // Создаем контейнер для характеристики
+                const charDiv = document.createElement('div');
+                charDiv.classList.add('characteristic-field');
+                charDiv.style.marginBottom = '15px';
+                
+                // Метка
+                const label = document.createElement('label');
+                label.textContent = `${charName}: `;
+                label.style.fontWeight = 'bold';
+                label.style.display = 'block';
+                label.style.marginBottom = '8px';
+                label.style.color = '#2c3e50';
+                charDiv.appendChild(label);
+                
+                // Обрабатываем разные типы данных
+                if (charData && charData['Качественное значение']) {
+                    createMultiSelectDropdown(charDiv, '', charData['Качественное значение'], 
+                        fieldFullName, tabName, key); // key - родительское поле (например, "Отеки")
+                } else if (charData && charData['Числовое значение']) {
+                    const input = document.createElement('input');
+                    input.type = 'number';
+                    input.name = fieldFullName;
+                    input.style.padding = '8px';
+                    input.style.border = '1px solid #ccc';
+                    input.style.borderRadius = '4px';
+                    input.style.width = '250px';
+                    input.style.fontSize = '14px';
+                    
+                    if (allTabsData[tabName].data[fieldFullName] !== undefined) {
+                        input.value = allTabsData[tabName].data[fieldFullName];
+                    }
+                    
+                    input.addEventListener('input', function() {
+                        allTabsData[tabName].data[fieldFullName] = this.value ? Number(this.value) : null;
+                        
+                        // Также сохраняем в иерархической структуре
+                        if (!allTabsData[tabName].hierarchicalData) {
+                            allTabsData[tabName].hierarchicalData = {};
+                        }
+                        if (!allTabsData[tabName].hierarchicalData[key]) {
+                            allTabsData[tabName].hierarchicalData[key] = {};
+                        }
+                        allTabsData[tabName].hierarchicalData[key][charName] = this.value;
+                    });
+                    
+                    charDiv.appendChild(input);
+                    
+                    if (charData['Числовое значение']['единица измерения']) {
+                        const unitSpan = document.createElement('span');
+                        unitSpan.textContent = ` ${charData['Числовое значение']['единица измерения']}`;
+                        unitSpan.style.marginLeft = '8px';
+                        unitSpan.style.color = '#666';
+                        unitSpan.style.fontSize = '14px';
+                        charDiv.appendChild(unitSpan);
+                    }
+                } else {
+                    const input = document.createElement('input');
+                    input.type = 'text';
+                    input.name = fieldFullName;
+                    input.placeholder = `Введите значение для ${charName}`;
+                    input.style.padding = '8px';
+                    input.style.border = '1px solid #ccc';
+                    input.style.borderRadius = '4px';
+                    input.style.width = '250px';
+                    input.style.fontSize = '14px';
+                    
+                    if (allTabsData[tabName].data[fieldFullName] !== undefined) {
+                        input.value = allTabsData[tabName].data[fieldFullName];
+                    }
+                    
+                    input.addEventListener('input', function() {
+                        allTabsData[tabName].data[fieldFullName] = this.value;
+                    });
+                    
+                    charDiv.appendChild(input);
+                }
+                
+                characteristicContainer.appendChild(charDiv);
+            }
+            
             sectionDiv.appendChild(characteristicContainer);
         }
     });
@@ -930,19 +1030,22 @@ function renderNestedCharacteristics(data, container, tabName) {
     container.appendChild(charContainer);
 }
 
-function createMultiSelectDropdown(container, labelText, options, fieldName, tabName) {
+function createMultiSelectDropdown(container, labelText, options, fieldName, tabName, parentField = null) {
     const dropdownContainer = document.createElement('div');
     dropdownContainer.classList.add('multi-select-dropdown');
     dropdownContainer.style.marginBottom = '15px';
     dropdownContainer.style.position = 'relative';
 
-    const label = document.createElement('label');
-    label.textContent = `${labelText}: `;
-    label.style.fontWeight = 'bold';
-    label.style.display = 'block';
-    label.style.marginBottom = '8px';
-    label.style.cursor = 'pointer';
-    dropdownContainer.appendChild(label);
+    // Добавляем метку если есть
+    if (labelText && labelText.trim() !== '') {
+        const label = document.createElement('label');
+        label.textContent = `${labelText}: `;
+        label.style.fontWeight = 'bold';
+        label.style.display = 'block';
+        label.style.marginBottom = '8px';
+        label.style.cursor = 'pointer';
+        dropdownContainer.appendChild(label);
+    }
 
     const dropdownButton = document.createElement('button');
     dropdownButton.type = 'button';
@@ -986,9 +1089,27 @@ function createMultiSelectDropdown(container, labelText, options, fieldName, tab
     optionsList.style.zIndex = '1000';
     optionsList.style.boxShadow = '0 4px 12px rgba(0,0,0,0.1)';
 
-    const currentValue = allTabsData[tabName].data[fieldName] || [];
-    const selectedValues = Array.isArray(currentValue) ? currentValue : currentValue ? [currentValue] : [];
+    // Получаем текущее значение
+    let currentValue;
+    if (parentField) {
+        // Проверяем иерархические данные
+        if (allTabsData[tabName].hierarchicalData && 
+            allTabsData[tabName].hierarchicalData[parentField] &&
+            allTabsData[tabName].hierarchicalData[parentField][fieldName]) {
+            currentValue = allTabsData[tabName].hierarchicalData[parentField][fieldName];
+        } else {
+            // Проверяем плоские данные
+            const flatFieldName = `${parentField}_${fieldName}`;
+            currentValue = allTabsData[tabName].data[flatFieldName] || [];
+        }
+    } else {
+        currentValue = allTabsData[tabName].data[fieldName] || [];
+    }
+    
+    const selectedValues = Array.isArray(currentValue) ? currentValue : 
+                         currentValue ? [currentValue] : [];
 
+    // Создаем опции
     for (const optionKey in options) {
         const optionDiv = document.createElement('label');
         optionDiv.style.display = 'flex';
@@ -1034,7 +1155,32 @@ function createMultiSelectDropdown(container, labelText, options, fieldName, tab
     function saveSelectedValues() {
         const checkedBoxes = optionsList.querySelectorAll('input[type="checkbox"]:checked');
         const selected = Array.from(checkedBoxes).map(cb => cb.value);
-        allTabsData[tabName].data[fieldName] = selected;
+        
+        if (parentField) {
+            // Сохраняем в иерархической структуре
+            if (!allTabsData[tabName].hierarchicalData) {
+                allTabsData[tabName].hierarchicalData = {};
+            }
+            if (!allTabsData[tabName].hierarchicalData[parentField]) {
+                allTabsData[tabName].hierarchicalData[parentField] = {};
+            }
+            allTabsData[tabName].hierarchicalData[parentField][fieldName] = selected;
+            
+            // Также сохраняем для обратной совместимости
+            const flatFieldName = `${parentField}_${fieldName}`;
+            allTabsData[tabName].data[flatFieldName] = selected.length > 0 ? selected : null;
+        } else {
+            // Простое поле
+            allTabsData[tabName].data[fieldName] = selected.length > 0 ? selected : null;
+            
+            // Также в иерархической структуре
+            if (!allTabsData[tabName].hierarchicalData) {
+                allTabsData[tabName].hierarchicalData = {};
+            }
+            allTabsData[tabName].hierarchicalData[fieldName] = selected;
+        }
+        
+        console.log('Сохранено:', parentField ? `${parentField}.${fieldName}` : fieldName, '=', selected);
     }
 
     optionsList.addEventListener('change', function(e) {
@@ -1092,96 +1238,106 @@ function saveAllData() {
     const ibData = outputData["История болезни или наблюдений v.4"][ibId];
     const structuredData = {};
 
+    // Проходим по всем вкладкам
     for (const tabName in allTabsData) {
-        if (!structuredData[tabName]) {
-            structuredData[tabName] = { "Общие данные": {} };
+        const tabData = allTabsData[tabName];
+        
+        // Если нет данных - пропускаем
+        if ((!tabData.hierarchicalData || Object.keys(tabData.hierarchicalData).length === 0) &&
+            (!tabData.data || Object.keys(tabData.data).length === 0)) {
+            continue;
         }
         
-        const tabGeneralData = structuredData[tabName]["Общие данные"];
+        // Создаем структуру для вкладки
+        structuredData[tabName] = {};
         
-        for (const fieldName in allTabsData[tabName].data) {
-            const fieldValue = allTabsData[tabName].data[fieldName];
-            if (fieldValue === null || fieldValue === undefined || fieldValue === '') continue;
-
-            // Определяем тип значения
-            let valueType = "Текстовое";
-            let processedValue = fieldValue;
-            
-            if (Array.isArray(fieldValue)) {
-                valueType = "Множественный выбор";
-                processedValue = fieldValue.join(', ');
-            } else if (typeof fieldValue === 'number') {
-                valueType = "Числовое";
-            } else if (typeof fieldValue === 'boolean') {
-                valueType = "Логическое";
-                processedValue = fieldValue ? "да" : "нет";
+        // Используем ТОЛЬКО иерархические данные, так как они содержат правильную структуру
+        if (tabData.hierarchicalData && Object.keys(tabData.hierarchicalData).length > 0) {
+            for (const fieldName in tabData.hierarchicalData) {
+                const fieldValue = tabData.hierarchicalData[fieldName];
+                
+                if (fieldValue === null || fieldValue === undefined || 
+                    (Array.isArray(fieldValue) && fieldValue.length === 0)) {
+                    continue;
+                }
+                
+                if (typeof fieldValue === 'object' && !Array.isArray(fieldValue)) {
+                    // Это группа полей (например, "Отеки": {"Локализация": [...]})
+                    structuredData[tabName][fieldName] = {};
+                    
+                    for (const subField in fieldValue) {
+                        const subValue = fieldValue[subField];
+                        
+                        if (subValue === null || subValue === undefined || 
+                            (Array.isArray(subValue) && subValue.length === 0)) {
+                            continue;
+                        }
+                        
+                        const valueInfo = getFieldInfo(subValue);
+                        structuredData[tabName][fieldName][subField] = valueInfo;
+                    }
+                    
+                    // Если группа пустая - удаляем ее
+                    if (Object.keys(structuredData[tabName][fieldName]).length === 0) {
+                        delete structuredData[tabName][fieldName];
+                    }
+                } else {
+                    // Простое поле (например, "Возраст": 45)
+                    const valueInfo = getFieldInfo(fieldValue);
+                    structuredData[tabName][fieldName] = valueInfo;
+                }
             }
-            
-            tabGeneralData[fieldName] = { 
-                "Тип": valueType, 
-                "Значение": processedValue
-            };
-            
-            // Добавляем единицу измерения для числовых полей, если известна
-            if (valueType === "Числовое") {
-                // Можно добавить логику для определения единиц измерения
-                // Например, из структуры GUI
-                const fieldUnit = getFieldUnit(tabName, fieldName);
-                if (fieldUnit) {
-                    tabGeneralData[fieldName]["Единица измерения"] = fieldUnit;
+        } else {
+            // Если нет иерархических данных, используем плоские, но преобразуем их
+            for (const fieldName in tabData.data) {
+                const fieldValue = tabData.data[fieldName];
+                
+                if (fieldValue === null || fieldValue === undefined || 
+                    (Array.isArray(fieldValue) && fieldValue.length === 0)) {
+                    continue;
+                }
+                
+                // Разделяем имя поля на части
+                const fieldParts = fieldName.split('_');
+                
+                if (fieldParts.length >= 2) {
+                    // Это поле вида "Перепротезный перелом_Тип перелома"
+                    // Последняя часть - это название подполя, остальное - название группы
+                    const subFieldName = fieldParts[fieldParts.length - 1]; // "Тип перелома"
+                    const parentFieldName = fieldParts.slice(0, fieldParts.length - 1).join(' '); // "Перепротезный перелом"
+                    
+                    // Если еще нет такой группы - создаем
+                    if (!structuredData[tabName][parentFieldName]) {
+                        structuredData[tabName][parentFieldName] = {};
+                    }
+                    
+                    // Добавляем подполе
+                    const valueInfo = getFieldInfo(fieldValue);
+                    structuredData[tabName][parentFieldName][subFieldName] = valueInfo;
+                } else {
+                    // Простое поле (одна часть)
+                    const valueInfo = getFieldInfo(fieldValue);
+                    structuredData[tabName][fieldName] = valueInfo;
                 }
             }
         }
         
-        // Удаляем пустые "Общие данные"
-        if (Object.keys(tabGeneralData).length === 0) {
+        // Если вкладка пустая - удаляем ее
+        if (Object.keys(structuredData[tabName]).length === 0) {
             delete structuredData[tabName];
         }
     }
     
     // Проверяем, есть ли вообще данные
-    let isEmpty = true;
-    for (const tabName in structuredData) {
-        if (Object.keys(structuredData[tabName]["Общие данные"]).length > 0) {
-            isEmpty = false;
-            break;
-        }
+    if (Object.keys(structuredData).length === 0) {
+        showNotification("Нет данных для сохранения!", "error");
+        return null;
     }
     
-    if (isEmpty) {
-        showNotification("Нет данных для сохранения!", "error");
-        return;
-    }
-
-    ibData["Данные"] = JSON.parse(JSON.stringify(structuredData));
-
-    const jsonOutput = JSON.stringify(outputData, (key, value) => {
-        // Удаляем пустые объекты и массивы
-        if (value === null || value === undefined) {
-            return undefined;
-        }
-        
-        if (typeof value === 'object' && !Array.isArray(value)) {
-            const keys = Object.keys(value);
-            if (keys.length === 0) {
-                return undefined;
-            }
-            
-            // Очищаем вложенные пустые объекты
-            const cleanedObj = {};
-            for (const key in value) {
-                if (value[key] !== undefined && value[key] !== null && 
-                    !(typeof value[key] === 'object' && Object.keys(value[key]).length === 0)) {
-                    cleanedObj[key] = value[key];
-                }
-            }
-            
-            return Object.keys(cleanedObj).length > 0 ? cleanedObj : undefined;
-        }
-        
-        return value;
-    }, 2);
-
+    ibData["Данные"] = structuredData;
+    
+    // Создаем и скачиваем файл
+    const jsonOutput = JSON.stringify(outputData, null, 2);
     const blob = new Blob([jsonOutput], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     
@@ -1198,6 +1354,177 @@ function saveAllData() {
     return structuredData;
 }
 
+// Вспомогательная функция для получения информации о поле
+function getFieldInfo(value) {
+    const result = {};
+    
+    // Определяем тип
+    if (Array.isArray(value)) {
+        result["Тип"] = "Множественный выбор";
+        result["Значение"] = value.join(', ');
+    } else if (typeof value === 'number') {
+        result["Тип"] = "Числовое";
+        result["Значение"] = String(value);
+    } else if (typeof value === 'boolean') {
+        result["Тип"] = "Логическое";
+        result["Значение"] = value ? "да" : "нет";
+    } else {
+        result["Тип"] = "Текстовое";
+        result["Значение"] = String(value);
+    }
+    
+    return result;
+}
+// Вспомогательная функция для проверки, обработано ли поле
+function checkIfFieldProcessed(tabName, fieldName, structuredData) {
+    const fieldParts = fieldName.split('_');
+    
+    if (fieldParts.length >= 2) {
+        const parentFieldName = fieldParts.slice(0, fieldParts.length - 1).join(' ');
+        const subFieldName = fieldParts[fieldParts.length - 1];
+        
+        if (structuredData[tabName] && 
+            structuredData[tabName][parentFieldName] && 
+            structuredData[tabName][parentFieldName][subFieldName]) {
+            return true;
+        }
+    } else {
+        if (structuredData[tabName] && structuredData[tabName][fieldName]) {
+            return true;
+        }
+    }
+    
+    return false;
+}
+
+// Вспомогательная функция для получения информации о поле
+function getFieldInfo(value) {
+    const result = {};
+    
+    // Определяем тип
+    if (Array.isArray(value)) {
+        result["Тип"] = "Множественный выбор";
+        result["Значение"] = value.join(', ');
+    } else if (typeof value === 'number') {
+        result["Тип"] = "Числовое";
+        result["Значение"] = String(value);
+    } else if (typeof value === 'boolean') {
+        result["Тип"] = "Логическое";
+        result["Значение"] = value ? "да" : "нет";
+    } else {
+        result["Тип"] = "Текстовое";
+        result["Значение"] = String(value);
+    }
+    
+    return result;
+}
+
+// Вспомогательная функция для получения информации о поле
+function getFieldInfo(value, fieldName) {
+    const result = {};
+    
+    // Определяем тип
+    if (Array.isArray(value)) {
+        result["Тип"] = "Множественный выбор";
+        result["Значение"] = value.join(', ');
+    } else if (typeof value === 'number') {
+        result["Тип"] = "Числовое";
+        result["Значение"] = String(value);
+        
+        // Можно добавить логику для единиц измерения
+        const unit = getFieldUnitFromName(fieldName);
+        if (unit) {
+            result["Единица измерения"] = unit;
+        }
+    } else if (typeof value === 'boolean') {
+        result["Тип"] = "Логическое";
+        result["Значение"] = value ? "да" : "нет";
+    } else {
+        result["Тип"] = "Текстовое";
+        result["Значение"] = String(value);
+    }
+    
+    return result;
+}
+
+// Вспомогательная функция для получения единиц измерения
+function getFieldUnitFromName(fieldName) {
+    // Можно расширить эту функцию для определения единиц измерения
+    // на основе имени поля или структуры GUI
+    return null;
+}
+
+// Вспомогательная функция для определения типа значения
+function getValueType(value) {
+    if (Array.isArray(value)) {
+        return "Множественный выбор";
+    } else if (typeof value === 'number') {
+        return "Числовое";
+    } else if (typeof value === 'boolean') {
+        return "Логическое";
+    } else {
+        return "Текстовое";
+    }
+}
+
+// Вспомогательная функция для обработки значения поля
+function processFieldValue(value, type) {
+    if (type === "Множественный выбор") {
+        return value.join(', ');
+    } else if (type === "Логическое") {
+        return value ? "да" : "нет";
+    } else if (value === null || value === undefined) {
+        return "";
+    } else {
+        return String(value);
+    }
+}
+
+// Вспомогательная функция для получения единиц измерения из GUI
+function getFieldUnitFromGUI(tabName, fieldName, childField) {
+    try {
+        const jsonTabs = jsonData['Описание GUI для ПС']?.['Шаблон']?.['Ввод наблюдений']?.['Вкладка'] || {};
+        const tabStructure = jsonTabs[tabName] || {};
+        
+        // Рекурсивный поиск
+        function findField(obj, targetField) {
+            if (!obj || typeof obj !== 'object') return null;
+            
+            for (const key in obj) {
+                if (key === targetField && obj[key]) {
+                    // Проверяем числовое значение
+                    if (obj[key]['Числовое значение']) {
+                        return obj[key]['Числовое значение']['единица измерения'];
+                    }
+                    
+                    // Проверяем характеристики
+                    if (obj[key]['Характеристика'] && Array.isArray(obj[key]['Характеристика'])) {
+                        for (const char of obj[key]['Характеристика']) {
+                            for (const charName in char) {
+                                if (childField && charName === childField) {
+                                    if (char[charName] && char[charName]['Числовое значение']) {
+                                        return char[charName]['Числовое значение']['единица измерения'];
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                if (typeof obj[key] === 'object') {
+                    const result = findField(obj[key], targetField);
+                    if (result) return result;
+                }
+            }
+            return null;
+        }
+        
+        return findField(tabStructure, fieldName);
+    } catch (error) {
+        console.warn("Не удалось определить единицу измерения:", error);
+        return null;
+    }
+}
 // Вспомогательная функция для получения единиц измерения
 function getFieldUnit(tabName, fieldName) {
     try {
