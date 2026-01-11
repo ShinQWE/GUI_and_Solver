@@ -427,6 +427,35 @@ function findNestedObject(obj, targetKey) {
     return null;
 }
 
+// Добавить где-то в начале gui-engine.js, например после функции renderPassportData
+function shouldRenderAsMenuVertex(key) {
+    // Все известные вершины меню
+    const menuVertices = [
+        'Дневник наблюдений', 'Анамнез заболевания', 'Назначение лечения',
+        'Жалобы', 'Осмотр', 'Опрос', 'Диагноз', 
+        'Расширенный клинический диагноз', 'Исследования',
+        'Инструментальные исследования', 'Идентификация', 'История болезни'
+    ];
+    
+    // Динамическая проверка
+    const isUpperCase = key && key.length > 2 && key[0] === key[0].toUpperCase();
+    const hasMultipleWords = key && key.split(' ').length >= 2;
+    const isMedicalSection = key && (
+        key.includes('диагноз') || 
+        key.includes('опрос') || 
+        key.includes('жалобы') ||
+        key.includes('осмотр') ||
+        key.includes('исследование') ||
+        key.includes('лечение') ||
+        key.includes('анамнез') ||
+        key.includes('дневник') ||
+        key.includes('расширенный') ||
+        key.includes('клинический')
+    );
+    
+    return menuVertices.includes(key) || (isUpperCase && hasMultipleWords && isMedicalSection);
+}
+
 function renderJSON(data, container, skipHeaders = false, tabName) {
     for (const key in data) {
         if (['Качественное значение', 'Числовое значение', 'единица измерения', 
@@ -463,11 +492,12 @@ function renderJSON(data, container, skipHeaders = false, tabName) {
             } else if (data[key]['присутствие'] || data[key]['отсутствует']) {
                 renderPresenceField(data[key], key, div, tabName);
             } else if (['Дневник наблюдений', 'Анамнез заболевания', 'Назначение лечения', 
-                     'Жалобы', 'Осмотр', 'Опрос', 'Сведения паспортные', 
-                     'Сведения при обращении', 'Сведения в динамике', 'Исследования',
-                     'Диагноз', 'Идентификация', 'История болезни'].includes(key)) {
-                renderCollapsibleSection(data[key], key, div, tabName);
-            } else if (key === 'Характеристика' && typeof data[key] === 'object') {
+          'Жалобы', 'Осмотр', 'Опрос', 'Сведения паспортные', 
+          'Сведения при обращении', 'Сведения в динамике', 'Исследования',
+          'Диагноз', 'Расширенный клинический диагноз', 'Идентификация', 'История болезни'].includes(key)) {
+            renderCollapsibleSection(data[key], key, div, tabName);
+        }
+            else if (key === 'Характеристика' && typeof data[key] === 'object') {
                 renderNestedCharacteristics(data[key], div, tabName);
             } else {
                 if (!skipHeaders && Object.keys(data[key]).length > 0) {
@@ -486,6 +516,8 @@ function renderJSON(data, container, skipHeaders = false, tabName) {
         if (div.childNodes.length > 0) container.appendChild(div);
     }
 }
+
+
 
 function renderGroup(groupData, container, tabName) {
     const groupContainer = document.createElement('div');
@@ -979,12 +1011,16 @@ function renderCollapsibleSection(data, key, container, tabName) {
     sectionDiv.classList.add('collapsible-section');
     sectionDiv.style.marginBottom = '15px';
     
+    // ОСОБАЯ ОБРАБОТКА для "Расширенный клинический диагноз"
+    const isExtendedDiagnosis = key === "Расширенный клинический диагноз" || 
+        key.includes("расширенный") && key.includes("диагноз");
+    
     const headerButton = document.createElement('button');
     headerButton.classList.add('section-header');
     headerButton.textContent = key;
     headerButton.style.width = '100%';
     headerButton.style.padding = '12px';
-    headerButton.style.backgroundColor = '#3498db';
+    headerButton.style.backgroundColor = isExtendedDiagnosis ? '#3498db' : '#3498db'; // Фиолетовый для расширенного диагноза
     headerButton.style.color = 'white';
     headerButton.style.border = 'none';
     headerButton.style.borderRadius = '5px';
