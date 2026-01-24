@@ -13,125 +13,18 @@ function analyzeData() {
     console.log("Все ключи в patient_data:", Object.keys(patient_data));
     console.log("Полные данные patient_data:", JSON.stringify(patient_data, null, 2));
     
-    // ГЛУБОКИЙ ДЕБАГ allTabsData
-    console.log("=== ГЛУБОКИЙ ДЕБАГ allTabsData ===");
-    for (const tabName in allTabsData) {
-        console.log(`\n--- Вкладка: ${tabName} ---`);
-        
-        // Плоские данные
-        const flatData = allTabsData[tabName].data;
-        console.log("Плоские данные (data):");
-        for (const key in flatData) {
-            console.log(`  ${key}:`, flatData[key]);
-            if (key.toLowerCase().includes('генотип') || 
-                key.toLowerCase().includes('genotype') ||
-                key.toLowerCase().includes('анализ крови')) {
-                console.log(`  ⭐ НАЙДЕНО ПОХОЖЕЕ НА ГЕНОТИП: ${key} = ${flatData[key]}`);
-            }
-        }
-        
-        // Иерархические данные
-        const hierarchicalData = allTabsData[tabName].hierarchicalData;
-        if (hierarchicalData && Object.keys(hierarchicalData).length > 0) {
-            console.log("Иерархические данные (hierarchicalData):", 
-                JSON.stringify(hierarchicalData, null, 2));
-            
-            // Рекурсивный поиск генотипа в иерархических данных
-            function searchForGenotype(obj, path = '') {
-                for (const key in obj) {
-                    const currentPath = path ? `${path}.${key}` : key;
-                    const value = obj[key];
-                    
-                    if (key.toLowerCase().includes('генотип') || 
-                        key.toLowerCase().includes('genotype') ||
-                        key.toLowerCase().includes('результат') ||
-                        (typeof value === 'string' && 
-                         (value.toLowerCase().includes('1a') || 
-                          value.toLowerCase().includes('1b')))) {
-                        console.log(`  🔍 Найден в ${currentPath}:`, value);
-                    }
-                    
-                    if (typeof value === 'object' && value !== null) {
-                        searchForGenotype(value, currentPath);
-                    }
-                }
-            }
-            
-            searchForGenotype(hierarchicalData);
-        }
-    }
+    // Проверяем наличие генотипа в данных формы
+    console.log("=== ПОИСК ГЕНОТИПА В ДАННЫХ ФОРМЫ ===");
+    const hasGenotypeInForm = checkIfGenotypeExistsInForm();
+    const patientGenotype = findGenotypeInPatientData(patient_data);
     
-    // Специально ищем возможные поля с генотипом
-    console.log("\n=== ПОИСК ПОЛЕЙ С ГЕНОТИПОМ ===");
-    const genotypeFields = [];
-    
-    for (const tabName in allTabsData) {
-        const tabData = allTabsData[tabName];
-        
-        // Поиск в плоских данных
-        for (const fieldName in tabData.data) {
-            const fieldNameLower = fieldName.toLowerCase();
-            if (fieldNameLower.includes('генотип') || 
-                fieldNameLower.includes('genotype') ||
-                fieldNameLower.includes('анализ') ||
-                fieldNameLower.includes('результат')) {
-                genotypeFields.push({
-                    tab: tabName,
-                    field: fieldName,
-                    value: tabData.data[fieldName],
-                    type: 'flat'
-                });
-            }
-        }
-        
-        // Поиск в иерархических данных
-        if (tabData.hierarchicalData) {
-            const searchInHierarchical = (obj, path = '') => {
-                for (const key in obj) {
-                    const currentPath = path ? `${path}.${key}` : key;
-                    const value = obj[key];
-                    
-                    const keyLower = key.toLowerCase();
-                    if (keyLower.includes('генотип') || 
-                        keyLower.includes('genotype') ||
-                        keyLower.includes('анализ') ||
-                        keyLower.includes('результат') ||
-                        (typeof value === 'string' && 
-                         (value.includes('1a') || value.includes('1b') || 
-                          value.includes('2') || value.includes('3')))) {
-                        genotypeFields.push({
-                            tab: tabName,
-                            field: currentPath,
-                            value: value,
-                            type: 'hierarchical'
-                        });
-                    }
-                    
-                    if (typeof value === 'object' && value !== null) {
-                        searchInHierarchical(value, currentPath);
-                    }
-                }
-            };
-            
-            searchInHierarchical(tabData.hierarchicalData);
-        }
-    }
-    
-    console.log("Найденные поля с генотипом:", genotypeFields);
-    
-    // ВРЕМЕННО: Если в форме действительно есть генотип 1a, но extract_patient_data его не находит
-    // Добавим его принудительно для теста
-    if (genotypeFields.length > 0) {
-        console.log("⭐ Генотип найден в форме!");
-        // Берем первый найденный генотип
-        patient_data['Анализ крови на гепатит С с определением генотипа_Результат'] = 
-            genotypeFields[0].value;
-        patient_data['Генотип'] = genotypeFields[0].value;
-        console.log("Добавлен генотип в patient_data:", genotypeFields[0].value);
+    if (hasGenotypeInForm) {
+        console.log("✅ Генотип найден в форме:", patientGenotype);
     } else {
-        console.log("⚠️ Генотип не найден в форме. Добавляем тестовый 1a");
-        patient_data['Анализ крови на гепатит С с определением генотипа_Результат'] = '1a';
-        patient_data['Генотип'] = '1a';
+        console.log("❌ Генотип НЕ найден в форме");
+        if (patientGenotype) {
+            console.log("⚠️ Но есть в patient_data (возможно из предыдущего анализа):", patientGenotype);
+        }
     }
     
     if (Object.keys(patient_data).length === 0) {
@@ -140,8 +33,10 @@ function analyzeData() {
     }
 
     try {
-        console.log("🎯 ЗАПУСК УНИВЕРСАЛЬНОГО АНАЛИЗА с генотипом:", 
-            patient_data['Генотип'] || patient_data['Анализ крови на гепатит С с определением генотипа_Результат']);
+        console.log("🎯 ЗАПУСК АНАЛИЗА ТОЛЬКО С РЕАЛЬНЫМИ ДАННЫМИ");
+        
+        // УДАЛЕНО: Принудительное добавление тестового генотипа
+        // Теперь используем только реальные данные из формы
         
         const explanation = generate_universal_explanation(patient_data, window.knowledgeBase);
         
@@ -156,6 +51,74 @@ function analyzeData() {
         showErrorResults(error);
         window.showNotification?.("Ошибка при анализе: " + error.message, "error");
     }
+}
+
+// Новая функция для проверки наличия генотипа в форме
+function checkIfGenotypeExistsInForm() {
+    if (!window.allTabsData) return false;
+    
+    for (const tabName in window.allTabsData) {
+        const tabData = window.allTabsData[tabName];
+        
+        // Проверяем плоские данные
+        for (const fieldName in tabData.data) {
+            const fieldNameLower = fieldName.toLowerCase();
+            if (fieldNameLower.includes('генотип') || 
+                fieldNameLower.includes('genotype') ||
+                fieldNameLower.includes('анализ крови на гепатит')) {
+                const value = tabData.data[fieldName];
+                if (value && value !== '' && value !== 'не определен') {
+                    return true;
+                }
+            }
+        }
+        
+        // Проверяем иерархические данные
+        if (tabData.hierarchicalData) {
+            for (const parentField in tabData.hierarchicalData) {
+                if (parentField.toLowerCase().includes('анализ крови на гепатит')) {
+                    const hepatitisData = tabData.hierarchicalData[parentField];
+                    if (hepatitisData && hepatitisData['Результат'] && 
+                        hepatitisData['Результат'] !== '' && hepatitisData['Результат'] !== 'не определен') {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+    
+    return false;
+}
+
+// Функция для поиска генотипа в данных пациента
+function findGenotypeInPatientData(patientData) {
+    if (!patientData) return null;
+    
+    // Ищем генотип в разных возможных полях
+    const genotypeFields = [
+        'Анализ крови на гепатит С с определением генотипа_Результат',
+        'Генотип',
+        'Генотип вируса',
+        'Генотип HCV',
+        'Генотип гепатита С'
+    ];
+    
+    for (const field of genotypeFields) {
+        if (patientData[field] && 
+            patientData[field] !== '' && 
+            patientData[field] !== 'не определен' &&
+            patientData[field] !== null &&
+            patientData[field] !== undefined) {
+            
+            // Если это массив, берем первое значение
+            if (Array.isArray(patientData[field])) {
+                return patientData[field][0] || null;
+            }
+            return String(patientData[field]);
+        }
+    }
+    
+    return null;
 }
 
 function generate_universal_explanation(patient_data, knowledge_base) {
@@ -177,16 +140,20 @@ function generate_universal_explanation(patient_data, knowledge_base) {
     if (patient_data["Пол"]) result.push(`   Пол: ${patient_data["Пол"]}`);
     
     const key_factors = [];
+    
+    // Только реальные факторы из данных (без принудительного добавления)
     if (patient_data["Трансплантация печени"]) key_factors.push(`Трансплантация: ${patient_data["Трансплантация печени"]}`);
     if (patient_data["Цирроз печени"]) key_factors.push(`Цирроз: ${patient_data["Цирроз печени"]}`);
     if (patient_data["ПВТ (противовирусной терапии)"]) key_factors.push(`Предыдущее лечение: ${patient_data["ПВТ (противовирусной терапии)"]}`);
     
-    // Добавляем информацию о генотипе
-    const genotype = patient_data['Анализ крови на гепатит С с определением генотипа_Результат'] || 
-                     patient_data['Генотип'] || 
-                     patient_data['Генотип вируса'];
+    // Добавляем информацию о генотипе ТОЛЬКО если он реально есть
+    const genotype = findGenotypeInPatientData(patient_data);
     if (genotype) {
         key_factors.push(`Генотип: ${genotype}`);
+        window.patientGenotype = genotype; // Сохраняем для использования
+    } else {
+        // Не добавляем фиктивный генотип!
+        result.push(`   ⚠️ **Внимание:** Генотип HCV не указан`);
     }
     
     if (key_factors.length > 0) result.push(`   Факторы: ${key_factors.join(', ')}`);
@@ -195,7 +162,18 @@ function generate_universal_explanation(patient_data, knowledge_base) {
     // Поиск рекомендаций
     const all_recommendations = find_all_recommendations(knowledge_base, patient_data, patient_diagnoses);
     const filtered_recommendations = filter_recommendations_by_diagnosis(all_recommendations, patient_diagnoses);
-    const valid_recommendations = filtered_recommendations.filter(rec => !rec.critical_mismatch || rec.match_score > 60);
+    
+    // Фильтруем рекомендации с учетом реального наличия генотипа
+    const valid_recommendations = [];
+    
+    for (const rec of filtered_recommendations) {
+        // Проверяем соответствие рекомендации данным пациента
+        const isSuitable = isRecommendationSuitable(rec, patient_data, genotype);
+        
+        if (isSuitable) {
+            valid_recommendations.push(rec);
+        }
+    }
     
     // Группировка и сортировка рекомендаций
     const recommendations_by_diagnosis = {};
@@ -218,20 +196,20 @@ function generate_universal_explanation(patient_data, knowledge_base) {
         result.push("💡 **Рекомендации:**");
         result.push("   • Уточните диагноз и дополнительные параметры");
         result.push("   • Проведите дополнительное обследование");
+        
+        // Если нет генотипа, рекомендуем его определить
+        if (!genotype && patient_diagnoses.some(d => 
+            d.toLowerCase().includes('гепатит') || d.toLowerCase().includes('hcv'))) {
+            result.push("   • **Определите генотип вируса гепатита С**");
+        }
     } else {
         // Компактный вывод рекомендаций (только краткий вариант)
         for (const [diagnosis, recs] of Object.entries(recommendations_by_diagnosis)) {
             result.push(`\n🏥 **${diagnosis.toUpperCase()}**`);
             
-            // Фильтруем только подходящие по генотипу
-            const suitable_recs = recs.filter(rec => {
-                const genotypeMatch = checkGenotypeMatch(rec, patient_data);
-                return genotypeMatch && rec.match_score >= 50 && !rec.critical_mismatch;
-            });
-            
-            if (suitable_recs.length > 0) {
-                // Берем лучшую подходящую рекомендацию для краткого вывода
-                const best_rec = suitable_recs[0];
+            // Берем лучшую рекомендацию для краткого вывода
+            if (recs.length > 0) {
+                const best_rec = recs[0];
                 const match_percent = Math.round(best_rec.match_score);
                 result.push(`💡 **Основная рекомендация:** ${best_rec.variant_name} (совпадение: ${match_percent}%)`);
                 
@@ -263,21 +241,8 @@ function generate_universal_explanation(patient_data, knowledge_base) {
             for (const diagnosis in recommendations_by_diagnosis) {
                 const recs = recommendations_by_diagnosis[diagnosis];
                 
-                // Фильтруем только подходящие рекомендации
-                const suitable_recs = recs.filter(rec => {
-                    // Базовые критерии
-                    if (rec.match_score < 50 || rec.critical_mismatch) return false;
-                    
-                    // Проверяем соответствие генотипу (если есть)
-                    const genotypeMatch = checkGenotypeMatch(rec, patient_data);
-                    if (!genotypeMatch) return false;
-                    
-                    return true;
-                });
-                
-                if (suitable_recs.length > 0) {
-                    // Берем лучшую из подходящих
-                    const best_rec = suitable_recs[0];
+                if (recs.length > 0) {
+                    const best_rec = recs[0];
                     best_recommendations.push({
                         diagnosis: diagnosis,
                         variant: best_rec.variant_name,
@@ -311,6 +276,8 @@ function generate_universal_explanation(patient_data, knowledge_base) {
                 
                 if (genotype) {
                     result.push(`   **Генотип:** ${genotype}`);
+                } else {
+                    result.push(`   **⚠️ Генотип:** не указан (рекомендуется определить)`);
                 }
                 
                 // Сохраняем ссылку на детальные рекомендации
@@ -335,7 +302,7 @@ function generate_universal_explanation(patient_data, knowledge_base) {
 
     if (has_hepatitis) {
         result.push("   • Проконсультируйтесь с гепатологом");
-        if (!genotype) result.push("   • Уточните генотип вируса гепатита С");
+        if (!genotype) result.push("   • **Определите генотип вируса гепатита С**");
         if (!patient_data["Цирроз печени"] && !patient_data["Трансплантация печени"]) result.push("   • Оцените степень фиброза печени (Фиброскан/Фибротест)");
     }
     
@@ -372,6 +339,41 @@ function generate_universal_explanation(patient_data, knowledge_base) {
     result.push("   • Мониторируйте эффективность лечения");
 
     return result.join("\n");
+}
+
+// Новая функция для проверки подходит ли рекомендация
+function isRecommendationSuitable(recommendation, patientData, patientGenotype) {
+    // Базовые критерии
+    if (recommendation.match_score < 50 || recommendation.critical_mismatch) {
+        return false;
+    }
+    
+    // Проверяем соответствие генотипу (если есть)
+    if (patientGenotype) {
+        const genotypeMatch = checkGenotypeMatch(recommendation, patientData);
+        if (!genotypeMatch) {
+            console.log(`❌ Рекомендация "${recommendation.variant_name}" не подходит: генотип не совпадает`);
+            return false;
+        }
+    } else {
+        // Если генотип не указан, пропускаем специфичные к генотипу рекомендации
+        const isGenotypeSpecific = recommendation.variant_name && (
+            recommendation.variant_name.toLowerCase().includes('генотип') ||
+            recommendation.variant_name.toLowerCase().includes('genotype') ||
+            recommendation.variant_name.includes('1a') ||
+            recommendation.variant_name.includes('1b') ||
+            recommendation.variant_name.includes('2') ||
+            recommendation.variant_name.includes('3') ||
+            recommendation.variant_name.includes('4')
+        );
+        
+        if (isGenotypeSpecific) {
+            console.log(`⚠️ Пропускаем "${recommendation.variant_name}": требует указания генотипа`);
+            return false;
+        }
+    }
+    
+    return true;
 }
 
 function extract_patient_diagnoses(patient_data) {
@@ -1210,36 +1212,8 @@ function extract_patient_value(patient_data, field_name) {
 }
 
 function checkGenotypeMatch(recommendation, patientData) {
-    // Получаем генотип из данных пациента - ИСПРАВЛЕННЫЙ ВАРИАНТ
-    let patientGenotype = null;
-    
-    // 1. Ищем в плоских данных
-    if (patientData['Анализ крови на гепатит С с определением генотипа_Результат']) {
-        patientGenotype = patientData['Анализ крови на гепатит С с определением генотипа_Результат'];
-    } else if (patientData['Генотип']) {
-        patientGenotype = patientData['Генотип'];
-    }
-    
-    // 2. Если нет в плоских данных, ищем в иерархических
-    if (!patientGenotype && window.allTabsData) {
-        for (const tabName in window.allTabsData) {
-            const tabData = window.allTabsData[tabName];
-            
-            // Проверяем плоские данные вкладки
-            if (tabData.data['Анализ крови на гепатит С с определением генотипа_Результат']) {
-                patientGenotype = tabData.data['Анализ крови на гепатит С с определением генотипа_Результат'];
-                break;
-            }
-            
-            // Проверяем иерархические данные
-            if (tabData.hierarchicalData && tabData.hierarchicalData['Анализ крови на гепатит С с определением генотипа']) {
-                if (tabData.hierarchicalData['Анализ крови на гепатит С с определением генотипа']['Результат']) {
-                    patientGenotype = tabData.hierarchicalData['Анализ крови на гепатит С с определением генотипа']['Результат'];
-                    break;
-                }
-            }
-        }
-    }
+    // Получаем генотип из данных пациента
+    const patientGenotype = findGenotypeInPatientData(patientData);
     
     // Если генотип не указан, считаем рекомендацию подходящей
     if (!patientGenotype || patientGenotype === '' || patientGenotype === 'не определен') {
@@ -1252,8 +1226,7 @@ function checkGenotypeMatch(recommendation, patientData) {
     
     console.log("Проверка генотипа:", {
         patientGenotype: patientGenotypeStr,
-        variantName: variantName,
-        recommendation: recommendation
+        variantName: variantName
     });
     
     // Проверяем, упоминается ли генотип в названии варианта
@@ -1312,15 +1285,13 @@ function getDetailedAnalysis() {
     if (patient_data["Возраст"]) result.push(`   Возраст: ${patient_data["Возраст"]} лет`);
     if (patient_data["Пол"]) result.push(`   Пол: ${patient_data["Пол"]}`);
     
-    // Получаем генотип правильно
-    let patientGenotype = window.patientGenotype || 
-                         patient_data['Анализ крови на гепатит С с определением генотипа_Результат'] ||
-                         patient_data['Генотип'];
+    // Получаем генотип правильно (только если реально есть)
+    const patientGenotype = findGenotypeInPatientData(patient_data);
     
     if (patientGenotype) {
         result.push(`   Генотип HCV: ${patientGenotype}`);
     } else {
-        result.push(`   Генотип HCV: не указан`);
+        result.push(`   Генотип HCV: ❌ не указан (рекомендуется определить)`);
     }
     result.push("");
     
@@ -1339,9 +1310,14 @@ function getDetailedAnalysis() {
             let status_text = "";
             
             // Определяем статус на основе совпадения и генотипа
-            if (!genotypeMatch) {
+            if (!genotypeMatch && patientGenotype) {
                 status_icon = "🚫";
                 status_text = "Генотип не соответствует";
+            } else if (!patientGenotype && rec.variant_name && 
+                      (rec.variant_name.toLowerCase().includes('генотип') || 
+                       rec.variant_name.includes('1a') || rec.variant_name.includes('1b'))) {
+                status_icon = "⚠️";
+                status_text = "Требуется указать генотип";
             } else if (match_percent >= 90) {
                 status_icon = "🎯";
                 status_text = "Высокое совпадение";
@@ -1359,8 +1335,10 @@ function getDetailedAnalysis() {
             if (!genotypeMatch && patientGenotype) {
                 result.push(`   • ❌ **Не подходит:** генотип не соответствует`);
                 result.push(`     (вариант для ${getGenotypeFromVariantName(rec.variant_name)}, у пациента: ${patientGenotype})`);
-            } else if (!genotypeMatch && !patientGenotype) {
-                result.push(`   • ⚠️ **Не рекомендуется:** генотип не указан`);
+            } else if (!patientGenotype && rec.variant_name && 
+                      (rec.variant_name.toLowerCase().includes('генотип') || 
+                       rec.variant_name.includes('1a') || rec.variant_name.includes('1b'))) {
+                result.push(`   • ⚠️ **Требуется:** указать генотип пациента`);
                 result.push(`     (вариант для ${getGenotypeFromVariantName(rec.variant_name)})`);
             } else {
                 result.push(`   • ✓ **Подходит:** соответствует критериям`);
@@ -1401,7 +1379,7 @@ function getDetailedAnalysis() {
     }
     
     // Добавляем итоговую рекомендацию с учетом генотипа
-    result.push("\n🎯 **ИТОГОВАЯ РЕКОМЕНДАЦИЯ С УЧЕТОМ ГЕНОТИПА:**");
+    result.push("\n🎯 **ИТОГОВАЯ РЕКОМЕНДАЦИЯ:**");
     
     if (patientGenotype) {
         result.push(`   • У пациента определен генотип: **${patientGenotype}**`);
@@ -1423,8 +1401,9 @@ function getDetailedAnalysis() {
             result.push(`   • Для генотипа ${patientGenotype} подходящих рекомендаций не найдено`);
         }
     } else {
-        result.push(`   • Генотип не указан - показаны все возможные варианты`);
+        result.push(`   • ⚠️ **Генотип не указан**`);
         result.push(`   • **Рекомендуется уточнить генотип** для точного выбора лечения`);
+        result.push(`   • Показаны только общие рекомендации, не требующие указания генотипа`);
     }
     
     return result.join("\n");

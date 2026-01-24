@@ -1,3 +1,108 @@
+/* УНИФИЦИРОВАННЫЙ CSS ДЛЯ СВОРАЧИВАЕМЫХ СЕКЦИЙ */
+
+/* Стили для универсальных сворачиваемых секций */
+.collapsible-section {
+    margin-bottom: 15px;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    transition: all 0.3s ease;
+}
+
+.collapsible-section:hover {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+/* ВСЕ заголовки секций - единый цвет #2196F3 */
+.section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    padding: 15px 20px;
+    background-color: #2196F3 !important; /* Единый синий цвет */
+    color: white;
+    border: none;
+    outline: none;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    border-radius: 8px 8px 0 0;
+    text-align: left;
+}
+
+.section-header:hover {
+    background-color: #1976D2 !important; /* Темнее при наведении */
+    transform: translateY(-1px);
+    box-shadow: 0 3px 10px rgba(33, 150, 243, 0.3);
+}
+
+.section-header span {
+    font-size: 14px;
+    margin-left: 10px;
+    transition: transform 0.3s ease;
+}
+
+.section-content {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease-out;
+    background-color: #fff;
+    border: 1px solid #e0e0e0;
+    border-top: none;
+    border-radius: 0 0 8px 8px;
+    border-left: 4px solid #2196F3; /* Синяя полоска слева */
+}
+
+.section-content.expanded {
+    max-height: 1000px; /* Достаточно большое значение для плавной анимации */
+    padding: 20px;
+    overflow-y: auto;
+}
+
+/* УДАЛЕНО: Разные цвета для разных типов секций */
+/* ВСЕ секции теперь одного цвета */
+
+/* Иконки для секций */
+.section-icon {
+    margin-right: 10px;
+    font-size: 18px;
+}
+
+/* Анимация при открытии/закрытии */
+@keyframes slideDown {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.section-content.expanded > * {
+    animation: slideDown 0.3s ease-out;
+}
+
+/* Стили для вложенных групп внутри секций */
+.section-content .group-section {
+    margin-bottom: 10px;
+    border-left: 3px solid #2196F3;
+    padding-left: 10px;
+}
+
+/* Улучшенные стили для полей внутри секций */
+.section-content .characteristic-field,
+.section-content .multi-select-dropdown,
+.section-content input,
+.section-content select {
+    margin-bottom: 12px;
+}
+
+.section-content label {
+    font-weight: 600;
+    color: #2c3e50;
+    margin-bottom: 6px;
+    display: block;
+}
+
+/* ОСНОВНОЙ CSS (ваш существующий код с изменениями) */
 
 .file-input-label {
     display: inline-block;
@@ -52,7 +157,7 @@
     margin: 5px 0;
     background-color: white;
     border-radius: 4px;
-    border-left: 4px solid #007bff;
+    border-left: 4px solid #2196F3; /* Изменено на #2196F3 */
 }
 
 .analysis-success {
@@ -172,43 +277,6 @@ input[type="text"] {
     font-weight: bold;
 }
 
-.collapsible-section {
-    margin-bottom: 15px;
-    border: 1px solid #ddd;
-    border-radius: 5px;
-    background-color: #f9f9f9;
-}
-
-.section-header {
-    background-color: #4CAF50;
-    color: white;
-    cursor: pointer;
-    padding: 12px;
-    width: 100%;
-    text-align: left;
-    border: none;
-    outline: none;
-    font-size: 16px;
-    transition: 0.4s;
-    border-radius: 5px 5px 0 0;
-}
-
-.section-header:hover {
-    background-color: #7adb7f;
-}
-
-.section-header.active {
-    background-color: #59a05b;
-}
-
-.section-content {
-    padding: 15px;
-    display: none;
-    overflow: hidden;
-    background-color: white;
-    border-radius: 0 0 5px 5px;
-}
-
 .nested {
     margin-left: 20px;
     padding: 5px;
@@ -258,14 +326,14 @@ h3 {
 }
 
 .dropdown-button:hover {
-    border-color: #3498db;
-    box-shadow: 0 2px 8px rgba(52, 152, 219, 0.2);
+    border-color: #2196F3;
+    box-shadow: 0 2px 8px rgba(33, 150, 243, 0.2);
 }
 
 .dropdown-button:focus {
     outline: none;
-    border-color: #3498db;
-    box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+    border-color: #2196F3;
+    box-shadow: 0 0 0 3px rgba(33, 150, 243, 0.1);
 }
 
 .dropdown-options {
@@ -313,7 +381,7 @@ h3 {
 
 /* Стили для выбранных значений */
 .selected-count {
-    background: #3498db;
+    background: #2196F3;
     color: white;
     border-radius: 12px;
     padding: 2px 8px;
@@ -323,7 +391,7 @@ h3 {
 
 .observation-section {
     background: #f8f9fa !important;
-    border-left: 4px solid #3498db !important;
+    border-left: 4px solid #2196F3 !important;
 }
 
 .characteristic-field {
@@ -335,14 +403,11 @@ h3 {
 
 .group-section {
     background: #f0f8ff !important;
-    border: 1px solid #b3d9ff !important;
+    border: 1px solid #90caf9 !important; /* Светло-синий */
 }
 
-
-
-
 .btn-ai {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #2196F3 0%, #0d47a1 100%); /* Изменено на синие оттенки */
     color: white;
     border: none;
     padding: 12px 20px;
@@ -350,13 +415,13 @@ h3 {
 }
 
 .btn-ai:hover {
-    background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+    background: linear-gradient(135deg, #0d47a1 0%, #2196F3 100%);
     transform: translateY(-2px);
 }
 
 .toggle-btn {
     padding: 10px 20px;
-    background-color: #4CAF50;
+    background-color: #2196F3; /* Изменено на #2196F3 */
     color: white;
     border: none;
     border-radius: 5px;
@@ -369,7 +434,7 @@ h3 {
 }
 
 .toggle-btn:hover {
-    background-color: #45a049;
+    background-color: #1976D2;
     transform: translateY(-1px);
     box-shadow: 0 3px 8px rgba(0,0,0,0.3);
 }
