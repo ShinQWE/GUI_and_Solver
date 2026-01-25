@@ -249,6 +249,39 @@ function renderTabContent(tabName) {
     }
 }
 
+function renderGeneralInfoTab(jsonTabs, container) {
+    // Ищем структуру "Общие сведения" или "Сведения паспортные"
+    let generalStructure = jsonTabs["Общие сведения"];
+    
+    if (!generalStructure) {
+        // Если нет "Общие сведения", ищем "Сведения паспортные"
+        generalStructure = jsonTabs["Сведения паспортные"];
+    }
+    
+    if (!generalStructure) {
+        // Если все еще нет, ищем любую вкладку с "общие" в названии
+        for (const tabKey in jsonTabs) {
+            if (tabKey.toLowerCase().includes('общие') || 
+                tabKey.toLowerCase().includes('паспортные')) {
+                generalStructure = jsonTabs[tabKey];
+                break;
+            }
+        }
+    }
+    
+    if (generalStructure) {
+        // УНИВЕРСАЛЬНЫЙ ПОДХОД: Если есть "Вершина меню", пропускаем ее
+        if (generalStructure['Вершина меню']) {
+            // Прямой рендеринг содержимого "Вершина меню" без самого заголовка
+            renderJSON(generalStructure['Вершина меню'], container, false, "Общие сведения");
+        } else {
+            renderJSON(generalStructure, container, false, "Общие сведения");
+        }
+    } else {
+        container.innerHTML = '<p style="color: #666; padding: 20px;">Нет данных для отображения</p>';
+    }
+}
+
 // Универсальная функция для отображения вкладки "Общие сведения"
 function renderGeneralInfoTab(jsonTabs, container) {
     // Ищем структуру "Общие сведения" или "Сведения паспортные"
@@ -322,6 +355,14 @@ function renderJSON(data, container, skipHeaders = false, tabName) {
              'место записи в документе', 'путь к узлу документа', 'Синонимы', 'синоним'].includes(key)) continue;
 
         const isGeneralInfoTab = tabName === "Общие сведения";
+        
+        // УНИВЕРСАЛЬНАЯ ПРОВЕРКА: пропускаем "Вершина меню" во вкладке "Общие сведения"
+        if (isGeneralInfoTab && key === "Вершина меню") {
+            // Если это "Вершина меню" в "Общих сведениях", рендерим содержимое напрямую
+            renderJSON(data[key], container, skipHeaders, tabName);
+            continue;
+        }
+        
         const isIntermediateNode = !isGeneralInfoTab && [
             'Вершина меню', 'Идентификация', 'Вкладка',
             'Шаблон', 'Описание GUI для ПС'
@@ -379,12 +420,17 @@ function renderJSON(data, container, skipHeaders = false, tabName) {
 function shouldRenderAsCollapsible(key, data, tabName) {
     // Если это явно определенная секция, которая должна быть сворачиваемой
     const explicitCollapsibleKeys = [
+        'Идентификация', 'Диагноз', // ДОБАВИЛИ для сворачивания
         'Оперативное вмешательство', 'Остеосинтез', 'Иммобилизация',
         'Осмотр', 'Расширенный клинический диагноз', 'Вмешательства',
         'Жалобы', 'Опрос', 'Анамнез заболевания', 'Исследования',
         'Инструментальные исследования', 'Назначение лечения', 'Дневник наблюдений',
-        'Диагноз', 'Вершина меню', 'Идентификация'
+        'Опрос', 'Анамнез заболевания', 'Исследования', 'Инструментальные исследования',
+        'Назначение лечения', 'Дневник наблюдений'
     ];
+    
+    // ОСОБЫЙ СЛУЧАЙ: "Вершина меню" НИКОГДА не должна быть сворачиваемой
+    if (key === "Вершина меню") return false;
     
     if (explicitCollapsibleKeys.includes(key)) return true;
     
@@ -484,13 +530,19 @@ function renderGroup(groupData, container, tabName) {
         
         groupSection.appendChild(groupHeader);
         groupSection.appendChild(groupContent);
-        renderGroupContent(groupData[groupName], groupContent, groupName, tabName);
+        
+        // ОСОБАЯ ОБРАБОТКА ДЛЯ "ИСТОРИЯ БОЛЕЗНИ"
+        if (groupName === "История болезни") {
+            renderHistoryDiseaseField(groupData[groupName], groupName, groupContent, tabName);
+        } else {
+            renderGroupContent(groupData[groupName], groupContent, groupName, tabName);
+        }
+        
         groupContainer.appendChild(groupSection);
     }
     
     container.appendChild(groupContainer);
 }
-
 function renderGroupContent(groupData, container, groupName, tabName) {
     if (groupData && groupData['Наблюдение']) {
         for (const observationName in groupData['Наблюдение']) {
@@ -518,6 +570,90 @@ function renderGroupContent(groupData, container, groupName, tabName) {
             }
         }
     }
+}
+
+function renderHistoryDiseaseField(data, fieldName, container, tabName) {
+    const sectionDiv = document.createElement('div');
+    sectionDiv.classList.add('history-disease-section');
+    sectionDiv.style.marginBottom = '20px';
+    sectionDiv.style.padding = '15px';
+    sectionDiv.style.backgroundColor = '#f0f8ff';
+    sectionDiv.style.border = '1px solid #90caf9';
+    sectionDiv.style.borderRadius = '8px';
+    
+    // Поле ввода "номер документа" (если есть)
+    if (data['поле ввода']) {
+        const inputGroup = document.createElement('div');
+        inputGroup.style.marginBottom = '20px';
+        
+        const inputLabel = document.createElement('label');
+        inputLabel.textContent = `${fieldName} (${data['поле ввода']}):`;
+        inputLabel.style.fontWeight = 'bold';
+        inputLabel.style.display = 'block';
+        inputLabel.style.marginBottom = '8px';
+        inputLabel.style.color = '#2c3e50';
+        inputGroup.appendChild(inputLabel);
+        
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.name = `${fieldName}_номер`;
+        input.placeholder = `Введите ${data['поле ввода']}`;
+        input.style.padding = '10px 12px';
+        input.style.border = '1px solid #ccc';
+        input.style.borderRadius = '4px';
+        input.style.width = '100%';
+        input.style.boxSizing = 'border-box';
+        input.style.fontSize = '14px';
+        input.style.transition = 'all 0.3s ease';
+        
+        // Устанавливаем значение, если оно уже есть
+        const fieldKey = `${fieldName}_номер`;
+        if (allTabsData[tabName].data[fieldKey] !== undefined) {
+            input.value = allTabsData[tabName].data[fieldKey];
+        }
+        
+        input.addEventListener('input', function() {
+            allTabsData[tabName].data[fieldKey] = this.value || null;
+            console.log(`Номер документа сохранен: ${this.value}`);
+        });
+        
+        input.addEventListener('focus', function() {
+            this.style.borderColor = '#2196F3';
+            this.style.boxShadow = '0 0 0 2px rgba(33, 150, 243, 0.1)';
+        });
+        
+        input.addEventListener('blur', function() {
+            this.style.borderColor = '#ccc';
+            this.style.boxShadow = 'none';
+        });
+        
+        inputGroup.appendChild(input);
+        sectionDiv.appendChild(inputGroup);
+    }
+    
+    // Рендерим поля "Наблюдение" (например, Национальность)
+    if (data['Наблюдение']) {
+        const observationSection = document.createElement('div');
+        observationSection.style.marginTop = '15px';
+        observationSection.style.paddingTop = '15px';
+        observationSection.style.borderTop = '1px solid #e0e0e0';
+        
+        for (const observationName in data['Наблюдение']) {
+            const observationData = data['Наблюдение'][observationName];
+            const fieldFullName = `${fieldName}_${observationName}`;
+            
+            if (observationData && observationData['Качественное значение']) {
+                createMultiSelectDropdown(observationSection, observationName, 
+                    observationData['Качественное значение'], fieldFullName, tabName);
+            }
+        }
+        
+        if (observationSection.childNodes.length > 0) {
+            sectionDiv.appendChild(observationSection);
+        }
+    }
+    
+    container.appendChild(sectionDiv);
 }
 
 function renderObservation(observationData, observationName, container, tabName) {
@@ -1306,8 +1442,9 @@ function saveAllData() {
             continue;
         }
         
-        // Создаем объект для раздела
+        // Создаем объект для раздела (БЕЗ "Общие данные")
         const sectionData = {};
+        let hasDataInSection = false;
         
         // 1. Обрабатываем простые поля (не иерархические)
         for (const fieldName in tabData.data) {
@@ -1336,11 +1473,13 @@ function saveAllData() {
                 fieldValueStr = String(fieldValue);
             }
             
-            // Сохраняем поле
+            // Сохраняем поле напрямую в раздел (без "Общие данные")
             sectionData[fieldName] = {
                 "Тип": fieldType,
                 "Значение": fieldValueStr
             };
+            
+            hasDataInSection = true;
         }
         
         // 2. Обрабатываем иерархические данные
@@ -1355,6 +1494,7 @@ function saveAllData() {
                 // Если это объект с подполями
                 if (typeof parentData === 'object' && !Array.isArray(parentData)) {
                     const subSectionData = {};
+                    let hasSubData = false;
                     
                     for (const subField in parentData) {
                         const subValue = parentData[subField];
@@ -1386,11 +1526,13 @@ function saveAllData() {
                             "Тип": subFieldType,
                             "Значение": subFieldValueStr
                         };
+                        hasSubData = true;
                     }
                     
                     // Сохраняем иерархическое поле только если есть данные
-                    if (Object.keys(subSectionData).length > 0) {
+                    if (hasSubData) {
                         sectionData[parentField] = subSectionData;
+                        hasDataInSection = true;
                     }
                 } else {
                     // Простое значение
@@ -1416,15 +1558,15 @@ function saveAllData() {
                         "Тип": fieldType,
                         "Значение": fieldValueStr
                     };
+                    
+                    hasDataInSection = true;
                 }
             }
         }
         
         // Сохраняем раздел только если есть данные
-        if (Object.keys(sectionData).length > 0) {
-            structuredData[tabName] = {
-                "Общие данные": sectionData
-            };
+        if (hasDataInSection) {
+            structuredData[tabName] = sectionData; // БЕЗ "Общие данные"!
         }
     }
     
@@ -1495,15 +1637,14 @@ function loadPatientHistory(patientHistory) {
             }
             
             const tabData = patientData[tabName];
-            if (!tabData["Общие данные"]) {
-                console.log(`Нет "Общие данные" во вкладке ${tabName}`);
+            if (!tabData) {
+                console.log(`Нет данных во вкладке ${tabName}`);
                 continue;
             }
             
-            const generalData = tabData["Общие данные"];
-            
-            for (const fieldName in generalData) {
-                const fieldObj = generalData[fieldName];
+            // ОБНОВЛЕНО: загружаем данные напрямую, без "Общие данные"
+            for (const fieldName in tabData) {
+                const fieldObj = tabData[fieldName];
                 
                 if (fieldObj && fieldObj["Значение"] !== undefined) {
                     let value = fieldObj["Значение"];
