@@ -47,6 +47,12 @@ function handleFileSelect(event) {
                 initializeTabsData();
                 renderTabs();
                 showNotification("Файл GUI загружен успешно!", "success");
+                
+                // ОБНОВЛЯЕМ СТАТУС GUI
+                if (typeof window.updateGUIStatus === 'function') {
+                    window.updateGUIStatus(true);
+                }
+                
             } catch (error) {
                 showNotification("Ошибка при чтении файла GUI: " + error.message, "error");
             }
@@ -64,6 +70,12 @@ function handleKnowledgeBaseSelect(event) {
                 knowledgeBase = JSON.parse(e.target.result);
                 window.knowledgeBase = knowledgeBase;
                 showNotification("База знаний загружена успешно!", "success");
+                
+                // ОБНОВЛЯЕМ СТАТУС БАЗЫ ЗНАНИЙ
+                if (typeof window.updateKBStatus === 'function') {
+                    window.updateKBStatus(true);
+                }
+                
             } catch (error) {
                 showNotification("Ошибка при чтении базы знаний: " + error.message, "error");
             }
@@ -81,13 +93,19 @@ function handlePatientHistorySelect(event) {
                 const patientHistory = JSON.parse(e.target.result);
                 loadPatientHistory(patientHistory);
                 
-                // СБРАСЫВАЕМ ПОЛЕ ВВОДА
+                // Сбрасываем поле ввода
                 event.target.value = '';
                 
                 // Создаем временное уведомление о загрузке
                 createHistoryLoadedNotification();
                 
                 showNotification("История болезни загружена успешно!", "success");
+                
+                // ОБНОВЛЯЕМ СТАТУС ИСТОРИИ БОЛЕЗНИ
+                if (typeof window.updateHistoryStatus === 'function') {
+                    window.updateHistoryStatus(true);
+                }
+                
             } catch (error) {
                 showNotification("Ошибка при чтении истории болезни: " + error.message, "error");
             }
@@ -162,6 +180,11 @@ function clearForm() {
     document.getElementById('patientHistoryFile').value = '';
     
     showNotification("Форма очищена!", "success");
+    
+    // ОБНОВЛЯЕМ СТАТУС ИСТОРИИ БОЛЕЗНИ (очищаем)
+    if (typeof window.updateHistoryStatus === 'function') {
+        window.updateHistoryStatus(false);
+    }
 }
 
 function reloadPage() {
@@ -1761,6 +1784,57 @@ function extract_patient_data() {
     console.log("Извлеченные данные для анализа:", patient_data);
     return patient_data;
 }
+
+// Функция для отслеживания ввода данных в форму
+function setupFormInputTracking() {
+    // Эта функция будет вызываться при любом вводе данных
+    function trackFormInput() {
+        // Проверяем, есть ли хоть какие-то данные в форме
+        let hasData = false;
+        
+        for (const tabName in allTabsData) {
+            const tabData = allTabsData[tabName];
+            
+            if (tabData.data && Object.keys(tabData.data).length > 0) {
+                // Проверяем не пустые ли данные
+                for (const fieldName in tabData.data) {
+                    const value = tabData.data[fieldName];
+                    if (value !== null && value !== undefined && value !== '' && 
+                        !(Array.isArray(value) && value.length === 0)) {
+                        hasData = true;
+                        break;
+                    }
+                }
+            }
+            
+            if (hasData) break;
+        }
+        
+        // Обновляем статус истории болезни
+        if (typeof window.updateHistoryStatus === 'function') {
+            window.updateHistoryStatus(hasData);
+        }
+    }
+    
+    // Добавляем обработчики событий ко всем полям ввода
+    document.addEventListener('input', function(e) {
+        if (e.target.matches('input, select, textarea')) {
+            setTimeout(trackFormInput, 100);
+        }
+    });
+    
+    // Также отслеживаем изменения в мультиселектах
+    document.addEventListener('change', function(e) {
+        if (e.target.matches('input[type="checkbox"], select')) {
+            setTimeout(trackFormInput, 100);
+        }
+    });
+}
+
+// Вызываем при загрузке
+document.addEventListener('DOMContentLoaded', function() {
+    setTimeout(setupFormInputTracking, 1000);
+});
 
 window.showNotification = showNotification;
 window.extract_patient_data = extract_patient_data;

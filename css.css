@@ -531,3 +531,325 @@ h3 {
     color: #0d47a1;
     font-weight: 600;
 }
+
+/* Добавляем в конец вашего css.css */
+
+/* Обертка для макета с боковой панелью */
+.layout-wrapper {
+    display: flex;
+    min-height: 100vh;
+    background: #f5f7fa;
+}
+
+/* Боковая панель */
+.sidebar {
+    width: 220px;
+    background: white;
+    border-right: 1px solid #e0e0e0;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 2px 0 5px rgba(0,0,0,0.05);
+    flex-shrink: 0;
+}
+
+.sidebar-header {
+    padding: 20px 15px;
+    border-bottom: 1px solid #e0e0e0;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+}
+
+.sidebar-header h3 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.sidebar-nav {
+    padding: 15px;
+    overflow-y: auto;
+    max-height: calc(100vh - 200px);
+}
+
+.nav-item {
+    padding: 10px 12px;
+    margin-bottom: 8px;
+    background: #f8f9fa;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: all 0.2s ease;
+    color: #333;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.nav-item:hover {
+    background: #e3f2fd;
+    border-color: #2196F3;
+    transform: translateX(3px);
+}
+
+.nav-item.active {
+    background: #2196F3;
+    color: white;
+    border-color: #1976D2;
+    font-weight: 500;
+}
+
+.sidebar-stats {
+    padding: 15px;
+    border-top: 1px solid #e0e0e0;
+    background: #f8f9fa;
+}
+
+.stat-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+    font-size: 13px;
+}
+
+.stat-item:last-child {
+    margin-bottom: 0;
+}
+
+.stat-label {
+    color: #666;
+}
+
+.stat-value {
+    font-weight: 600;
+    color: #2196F3;
+}
+
+/* Основной контент */
+.main-content {
+    flex: 1;
+    padding: 20px;
+    max-width: calc(100% - 220px);
+    overflow-x: hidden;
+}
+
+/* Адаптивность */
+@media (max-width: 768px) {
+    .sidebar {
+        width: 50px;
+    }
+    
+    .sidebar-header h3,
+    .stat-label,
+    .stat-value {
+        display: none;
+    }
+    
+    .nav-item {
+        padding: 8px;
+        text-align: center;
+        font-size: 12px;
+    }
+    
+    .main-content {
+        max-width: calc(100% - 50px);
+        padding: 10px;
+    }
+}
+
+/* Улучшаем скролл */
+.sidebar-nav::-webkit-scrollbar {
+    width: 4px;
+}
+
+.sidebar-nav::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 2px;
+}
+
+.sidebar-nav::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 2px;
+}
+
+.sidebar-nav::-webkit-scrollbar-thumb:hover {
+    background: #555;
+}
+
+/* Анимация появления навигации */
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateX(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+.nav-item {
+    animation: slideIn 0.3s ease-out;
+    animation-fill-mode: both;
+}
+
+.nav-item:nth-child(1) { animation-delay: 0.1s; }
+.nav-item:nth-child(2) { animation-delay: 0.2s; }
+.nav-item:nth-child(3) { animation-delay: 0.3s; }
+.nav-item:nth-child(4) { animation-delay: 0.4s; }
+.nav-item:nth-child(5) { animation-delay: 0.5s; }
+
+/* Улучшаем отображение вкладок */
+.tab-headers {
+    overflow-x: auto;
+    white-space: nowrap;
+    padding-bottom: 5px;
+}
+
+.tab-header {
+    min-width: 150px;
+    text-align: center;
+}
+
+/* Добавляем в конец css.css */
+
+/* Стили для статусов в боковой панели */
+.stat-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+    font-size: 13px;
+    padding: 8px 10px;
+    background: #f8f9fa;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+}
+
+.stat-item:hover {
+    background: #e9ecef;
+    transform: translateX(3px);
+}
+
+.stat-label {
+    color: #495057;
+    font-weight: 500;
+}
+
+.stat-value {
+    font-weight: 600;
+    font-size: 14px;
+    min-width: 20px;
+    text-align: center;
+    cursor: default;
+}
+
+.stat-value[title] {
+    cursor: help;
+}
+
+/* Индикаторы статуса */
+.status-indicator {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    margin-right: 8px;
+    vertical-align: middle;
+}
+
+.status-success {
+    background-color: #28a745;
+    box-shadow: 0 0 5px rgba(40, 167, 69, 0.5);
+}
+
+.status-warning {
+    background-color: #ffc107;
+    box-shadow: 0 0 5px rgba(255, 193, 7, 0.5);
+}
+
+.status-error {
+    background-color: #dc3545;
+    box-shadow: 0 0 5px rgba(220, 53, 69, 0.5);
+}
+
+/* Анимация появления статусов */
+@keyframes statusPulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.1); }
+    100% { transform: scale(1); }
+}
+
+.stat-value:not([style*="color: #dc3545"]) {
+    animation: statusPulse 0.5s ease;
+}
+
+/* Подсказки при наведении */
+[title] {
+    position: relative;
+}
+
+[title]:hover::after {
+    content: attr(title);
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #333;
+    color: white;
+    padding: 5px 10px;
+    border-radius: 4px;
+    font-size: 12px;
+    white-space: nowrap;
+    z-index: 1000;
+    margin-bottom: 5px;
+}
+
+/* Адаптивность для статусов */
+@media (max-width: 768px) {
+    .stat-label {
+        font-size: 12px;
+    }
+    
+    .stat-value {
+        font-size: 12px;
+    }
+}
+
+/* Добавляем в css.css */
+
+/* Анимация для изменения статуса */
+@keyframes statusChange {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.3); }
+    100% { transform: scale(1); }
+}
+
+.stat-value {
+    font-weight: 600;
+    font-size: 16px;
+    min-width: 24px;
+    text-align: center;
+    cursor: default;
+    display: inline-block;
+    transition: all 0.3s ease;
+}
+
+.stat-value[title] {
+    cursor: help;
+}
+
+/* Анимация при изменении статуса на успешный */
+.stat-value:contains("✅") {
+    animation: statusChange 0.5s ease;
+}
+
+/* Пустое состояние навигации */
+.nav-empty {
+    text-align: center;
+    color: #666;
+    padding: 20px;
+    font-style: italic;
+    font-size: 14px;
+}

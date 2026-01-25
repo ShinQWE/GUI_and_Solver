@@ -8,63 +8,84 @@
 </head>
 <body>
     <div id="app">
-        <h1>Платформа Медицинских Решений</h1>
-        
-        <div class="action-buttons">
-            <!-- ЗАМЕНА: убираем обычный input и делаем стилизованную кнопку -->
-            <label for="guiFileInput" class="file-input-label">
-                📋 Выберите Описание GUI
-                <input type="file" id="guiFileInput" accept=".json" style="display: none;" />
-            </label>
-            <label for="knowledgeBaseFile" class="file-input-label">
-                📁 Загрузить базу знаний
-                <input type="file" id="knowledgeBaseFile" accept=".json" style="display: none;" />
-            </label>
-            <label for="patientHistoryFile" class="file-input-label">
-                📋 Загрузить историю болезни
-                <input type="file" id="patientHistoryFile" accept=".json" style="display: none;" />
-            </label>
-            <button id="analyzeButton">🔍 Анализировать данные</button>
-        </div>
-        
-        <div id="tabs">
-            <div class="tab-headers"></div>
-            <div class="tab-contents"></div>
-        </div>
-        
-        <div id="results" style="display: none; margin-top: 20px; padding: 15px; background-color: #f8f9fa; border-radius: 5px; border: 1px solid #ddd;">
-            <h3>Результаты анализа:</h3>
-            <div id="analysisResults"></div>
-        </div>
-        
-        <div class="action-buttons">
-            <button id="saveButton">💾 Сохранить данные</button>
-            <button id="clearButton">🗑 Очистить форму</button>
-            <button id="reloadButton">🔄 Загрузить заново</button>
-            <button id="aiRecommendationsButton" class="btn" style="background: #667eea; color: white;">
-                🤖 Получить AI-рекомендации
-            </button>
-            <!-- После кнопки AI-рекомендаций добавьте: -->
-            <div id="aiLoading" style="display: none; text-align: center; margin: 10px 0; padding: 10px; background: #e3f2fd; border-radius: 5px;">
-                <div style="display: flex; align-items: center; justify-content: center; gap: 10px;">
-                    <div class="spinner" style="width: 20px; height: 20px; border: 2px solid #f3f3f3; border-top: 2px solid #2196F3; border-radius: 50%; animation: spin 1s linear infinite;"></div>
-                    <span style="color: #2196F3; font-weight: bold;">🤖 AI генерирует рекомендации... Подождите</span>
+        <div class="layout-wrapper">
+            <!-- Новая боковая панель для навигации -->
+            <div class="sidebar">
+                <div class="sidebar-header">
+                    <h3>📋 Навигация</h3>
+                </div>
+                <div id="quickNav" class="sidebar-nav">
+                    <!-- Здесь будут вкладки -->
+                </div>
+                <div class="sidebar-stats">
+                    <div class="stat-item">
+                        <span class="stat-label">GUI файл:</span>
+                        <span id="guiStatus" class="stat-value">❌</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">База знаний:</span>
+                        <span id="kbStatus" class="stat-value">❌</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">История болезни:</span>
+                        <span id="historyStatus" class="stat-value">❌</span>
+                    </div>
                 </div>
             </div>
-
-            <style>
-            @keyframes spin {
-                0% { transform: rotate(0deg); }
-                100% { transform: rotate(360deg); }
-            }
-            </style>
+            
+            <!-- Основной контент -->
+            <div class="main-content">
+                <h1>Динамический GUI-Движок с Решателем</h1>
+                
+                <div class="action-buttons">
+                    <label for="guiFileInput" class="file-input-label">
+                        📋 Выберите Описание GUI
+                        <input type="file" id="guiFileInput" accept=".json" style="display: none;" />
+                    </label>
+                    <label for="knowledgeBaseFile" class="file-input-label">
+                        📁 Загрузить базу знаний
+                        <input type="file" id="knowledgeBaseFile" accept=".json" style="display: none;" />
+                    </label>
+                    <label for="patientHistoryFile" class="file-input-label">
+                        📋 Загрузить историю болезни
+                        <input type="file" id="patientHistoryFile" accept=".json" style="display: none;" />
+                    </label>
+                    <button id="analyzeButton">🔍 Анализировать данные</button>
+                </div>
+                
+                <div id="tabs">
+                    <div class="tab-headers"></div>
+                    <div class="tab-contents"></div>
+                </div>
+                
+                <div id="results" style="display: none; margin-top: 20px; padding: 15px; background-color: #f8f9fa; border-radius: 5px; border: 1px solid #ddd;">
+                    <h3>Результаты анализа:</h3>
+                    <div id="analysisResults"></div>
+                </div>
+                
+                <div class="action-buttons">
+                    <button id="saveButton">💾 Сохранить данные</button>
+                    <button id="clearButton">🗑 Очистить форму</button>
+                    <button id="reloadButton">🔄 Загрузить заново</button>
+                    <button id="aiRecommendationsButton" class="btn" style="background: #667eea; color: white;">
+                        🤖 Получить AI-рекомендации
+                    </button>
+                    
+                    <div id="aiLoading" style="display: none; text-align: center; margin: 10px 0; padding: 10px; background: #e3f2fd; border-radius: 5px;">
+                        <div style="display: flex; align-items: center; justify-content: center; gap: 10px;">
+                            <div class="spinner" style="width: 20px; height: 20px; border: 2px solid #f3f3f3; border-top: 2px solid #2196F3; border-radius: 50%; animation: spin 1s linear infinite;"></div>
+                            <span style="color: #2196F3; font-weight: bold;">🤖 AI генерирует рекомендации... Подождите</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="notification" style="color: green; margin-top: 10px;"></div>
+            </div>
         </div>
-        
-        <div id="notification" style="color: green; margin-top: 10px;"></div>
     </div>
     
-    <!-- сначала GUI движок, потом решатель -->
     <script src="./js/gui-engine.js"></script>
     <script src="./js/solver.js"></script>
+    <script src="./js/sidebar.js"></script>
 </body>
-</html>
+</html>йц
