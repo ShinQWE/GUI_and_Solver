@@ -1,5 +1,5 @@
 // УНИВЕРСАЛЬНЫЙ РЕШАТЕЛЬ ДЛЯ ЛЮБЫХ КЛИНИЧЕСКИХ РЕКОМЕНДАЦИЙ
-
+console.log("✅ Solver.js загружен, версия: " + new Date().toISOString());
 function analyzeData() {
     if (!window.knowledgeBase) {
         window.showNotification?.("Сначала загрузите базу знаний!", "error");
@@ -8,24 +8,12 @@ function analyzeData() {
 
     const patient_data = window.extract_patient_data?.() || {};
     
-    // ДЕБАГ: Проверяем что вообще есть в данных
+    // Сохраняем диагнозы для детального анализа
+    const diagnosis = extractPatientDiagnosis(patient_data);
+    window.patientDiagnoses = diagnosis ? [diagnosis] : [];
+    
     console.log("=== ДЕБАГ ПЕРЕД АНАЛИЗОМ ===");
-    console.log("Все ключи в patient_data:", Object.keys(patient_data));
-    console.log("Полные данные patient_data:", JSON.stringify(patient_data, null, 2));
-    
-    // Проверяем наличие генотипа в данных формы
-    console.log("=== ПОИСК ГЕНОТИПА В ДАННЫХ ФОРМЫ ===");
-    const hasGenotypeInForm = checkIfGenotypeExistsInForm();
-    const patientGenotype = findGenotypeInPatientData(patient_data);
-    
-    if (hasGenotypeInForm) {
-        console.log("✅ Генотип найден в форме:", patientGenotype);
-    } else {
-        console.log("❌ Генотип НЕ найден в форме");
-        if (patientGenotype) {
-            console.log("⚠️ Но есть в patient_data (возможно из предыдущего анализа):", patientGenotype);
-        }
-    }
+    console.log("Данные пациента:", patient_data);
     
     if (Object.keys(patient_data).length === 0) {
         window.showNotification?.("Нет данных пациента! Заполните форму", "error");
@@ -33,14 +21,11 @@ function analyzeData() {
     }
 
     try {
-        console.log("🎯 ЗАПУСК АНАЛИЗА ТОЛЬКО С РЕАЛЬНЫМИ ДАННЫМИ");
-        
-        // УДАЛЕНО: Принудительное добавление тестового генотипа
-        // Теперь используем только реальные данные из формы
+        console.log("🎯 ЗАПУСК АНАЛИЗА");
         
         const explanation = generate_universal_explanation(patient_data, window.knowledgeBase);
         
-        // Сохраняем для переключения режимов
+        // Сохраняем для повторного использования
         window.lastExplanation = explanation;
         window.lastPatientData = patient_data;
         
@@ -122,223 +107,1499 @@ function findGenotypeInPatientData(patientData) {
 }
 
 function generate_universal_explanation(patient_data, knowledge_base) {
+    console.log("=== НАЧАЛО generate_universal_explanation ===");
+    console.log("Данные пациента:", patient_data);
+    
     if (!patient_data || Object.keys(patient_data).length === 0) {
         return "❌ Данные пациента отсутствуют или имеют неверный формат.";
     }
 
     const result = [];
-    const patient_diagnoses = extract_patient_diagnoses(patient_data);
+    const patientDiagnosis = extractPatientDiagnosis(patient_data);
     
-    if (patient_diagnoses.length === 0) {
-        return "❌ Не удалось определить диагнозы пациента.";
+    if (!patientDiagnosis) {
+        result.push("❌ Не удалось определить диагноз пациента.");
+        return result.join("\n");
     }
 
-    // Краткая информация о пациенте
-    result.push("👤 **ДАННЫЕ ПАЦИЕНТА**");
-    result.push(`   Диагнозы: ${patient_diagnoses.join(', ')}`);
-    if (patient_data["Возраст"]) result.push(`   Возраст: ${patient_data["Возраст"]} лет`);
-    if (patient_data["Пол"]) result.push(`   Пол: ${patient_data["Пол"]}`);
-    
-    const key_factors = [];
-    
-    // Только реальные факторы из данных (без принудительного добавления)
-    if (patient_data["Трансплантация печени"]) key_factors.push(`Трансплантация: ${patient_data["Трансплантация печени"]}`);
-    if (patient_data["Цирроз печени"]) key_factors.push(`Цирроз: ${patient_data["Цирроз печени"]}`);
-    if (patient_data["ПВТ (противовирусной терапии)"]) key_factors.push(`Предыдущее лечение: ${patient_data["ПВТ (противовирусной терапии)"]}`);
-    
-    // Добавляем информацию о генотипе ТОЛЬКО если он реально есть
-    const genotype = findGenotypeInPatientData(patient_data);
-    if (genotype) {
-        key_factors.push(`Генотип: ${genotype}`);
-        window.patientGenotype = genotype; // Сохраняем для использования
-    } else {
-        // Не добавляем фиктивный генотип!
-        result.push(`   ⚠️ **Внимание:** Генотип HCV не указан`);
-    }
-    
-    if (key_factors.length > 0) result.push(`   Факторы: ${key_factors.join(', ')}`);
+    console.log("📋 Диагноз пациента:", patientDiagnosis);
+
+    // 1. ЗАГОЛОВОК С ДИАГНОЗОМ
+    result.push(`🎯 **ДИАГНОЗ:** ${patientDiagnosis}`);
     result.push("");
 
-    // Поиск рекомендаций
-    const all_recommendations = find_all_recommendations(knowledge_base, patient_data, patient_diagnoses);
-    const filtered_recommendations = filter_recommendations_by_diagnosis(all_recommendations, patient_diagnoses);
-    
-    // Фильтруем рекомендации с учетом реального наличия генотипа
-    const valid_recommendations = [];
-    
-    for (const rec of filtered_recommendations) {
-        // Проверяем соответствие рекомендации данным пациента
-        const isSuitable = isRecommendationSuitable(rec, patient_data, genotype);
-        
-        if (isSuitable) {
-            valid_recommendations.push(rec);
-        }
+    // 2. ИЩЕМ В БАЗЕ ЗНАНИЙ
+    const klinrek = knowledge_base["КлинРек II ур"];
+    if (!klinrek) {
+        result.push("❌ База знаний имеет неверный формат");
+        return result.join("\n");
     }
-    
-    // Группировка и сортировка рекомендаций
-    const recommendations_by_diagnosis = {};
-    valid_recommendations.forEach(rec => {
-        if (!recommendations_by_diagnosis[rec.diagnosis]) recommendations_by_diagnosis[rec.diagnosis] = [];
-        recommendations_by_diagnosis[rec.diagnosis].push(rec);
-    });
 
-    for (const diagnosis in recommendations_by_diagnosis) {
-        recommendations_by_diagnosis[diagnosis].sort((a, b) => b.match_score - a.match_score);
+    const diseases = klinrek["Заболевание"];
+    if (!diseases || !diseases[patientDiagnosis]) {
+        result.push(`❌ В базе знаний нет рекомендаций для диагноза: ${patientDiagnosis}`);
+        return result.join("\n");
     }
-    
-    // Сохраняем для детального анализа
-    window.recommendations_by_diagnosis = recommendations_by_diagnosis;
-    window.patientGenotype = genotype;
-    window.patientDiagnoses = patient_diagnoses;
 
-    if (valid_recommendations.length === 0) {
-        result.push("❌ Не найдено подходящих клинических рекомендаций.");
-        result.push("💡 **Рекомендации:**");
-        result.push("   • Уточните диагноз и дополнительные параметры");
-        result.push("   • Проведите дополнительное обследование");
+    const diseaseSection = diseases[patientDiagnosis];
+    const variants = diseaseSection["Вариант течения (функциональный класс)"];
+    
+    if (!variants) {
+        result.push(`❌ Нет вариантов лечения для диагноза: ${patientDiagnosis}`);
+        return result.join("\n");
+    }
+
+    console.log("🔍 Найдены варианты лечения:", Object.keys(variants));
+
+    // 3. ПРОВЕРЯЕМ ВАРИАНТЫ
+    let allCheckedVariants = [];
+    let variantsWithoutCategory = [];
+
+    for (const [variantName, variantData] of Object.entries(variants)) {
+        console.log(`\n🔎 ПРОВЕРЯЕМ ВАРИАНТ: "${variantName}"`);
         
-        // Если нет генотипа, рекомендуем его определить
-        if (!genotype && patient_diagnoses.some(d => 
-            d.toLowerCase().includes('гепатит') || d.toLowerCase().includes('hcv'))) {
-            result.push("   • **Определите генотип вируса гепатита С**");
-        }
-    } else {
-        // Компактный вывод рекомендаций (только краткий вариант)
-        for (const [diagnosis, recs] of Object.entries(recommendations_by_diagnosis)) {
-            result.push(`\n🏥 **${diagnosis.toUpperCase()}**`);
+        if (!variantData["Инструкция"]) continue;
+        
+        const instructions = variantData["Инструкция"];
+        
+        for (const [instKey, instruction] of Object.entries(instructions)) {
+            const patientCategory = instruction["Категория пациента"];
             
-            // Берем лучшую рекомендацию для краткого вывода
-            if (recs.length > 0) {
-                const best_rec = recs[0];
-                const match_percent = Math.round(best_rec.match_score);
-                result.push(`💡 **Основная рекомендация:** ${best_rec.variant_name} (совпадение: ${match_percent}%)`);
-                
-                if (best_rec.treatments && best_rec.treatments.length > 0) {
-                    const main_treatment = best_rec.treatments.find(t => 
-                        t.type === 'combination' || t.type === 'medication'
-                    ) || best_rec.treatments[0];
-                    
-                    if (main_treatment.type === 'combination' && main_treatment.drugs) {
-                        result.push(`   💊 ${main_treatment.drugs.join(' + ')}`);
-                    } else if (main_treatment.text) {
-                        result.push(`   💊 ${main_treatment.text}`);
-                    }
-                }
-                
-                if (genotype) {
-                    result.push(`   🧬 Учтён генотип: ${genotype}`);
-                }
-            } else {
-                result.push("   ⚠️ Нет рекомендаций, полностью соответствующих данным пациента");
+            if (!patientCategory) {
+                console.log(`✅ Вариант "${variantName}" без категории (подходит всем)`);
+                variantsWithoutCategory.push({
+                    variantName,
+                    instruction,
+                    reason: "Без ограничений по категории"
+                });
+                continue;
             }
-        }
-        
-        // Итоговая рекомендация (основная)
-        if (Object.keys(recommendations_by_diagnosis).length > 0) {
-            result.push("\n💡 **ОСНОВНАЯ РЕКОМЕНДАЦИЯ**");
-            const best_recommendations = [];
             
-            for (const diagnosis in recommendations_by_diagnosis) {
-                const recs = recommendations_by_diagnosis[diagnosis];
-                
-                if (recs.length > 0) {
-                    const best_rec = recs[0];
-                    best_recommendations.push({
-                        diagnosis: diagnosis,
-                        variant: best_rec.variant_name,
-                        score: best_rec.match_score,
-                        treatments: best_rec.treatments,
-                        recommendations_list: recs
+            console.log("📋 Категория пациента в базе:", patientCategory);
+            const matchResult = checkPatientCategory(patientCategory, patient_data);
+            console.log("📊 Результат проверки:", {
+                matches: matchResult.matches,
+                details: matchResult.details,
+                missing: matchResult.missing
+            });
+            
+            // РАСЧЕТ СКОРА С НОРМАЛИЗАЦИЕЙ
+            let matchScore = calculateMatchScoreWithNormalization(matchResult, variantName, patient_data);
+            
+            allCheckedVariants.push({
+                variantName,
+                hasCategory: true,
+                matches: matchResult.matches,
+                details: matchResult.details,
+                missing: matchResult.missing,
+                instruction: instruction,
+                matchScore: matchScore // УЖЕ НОРМАЛИЗОВАННЫЙ
+            });
+        }
+    }
+
+    // 4. УЛУЧШЕННЫЙ ВЫБОР ЛУЧШЕГО ВАРИАНТА
+    let finalMatch = null;
+    let bestMatchScore = 0;
+    let hasPerfectMatch = false;
+
+    console.log("\n📊 ИТОГИ ПРОВЕРКИ ВАРИАНТОВ:");
+    console.log("Всего проверено вариантов с категорией:", allCheckedVariants.length);
+    console.log("Вариантов без категории:", variantsWithoutCategory.length);
+
+    if (allCheckedVariants.length > 0) {
+        // Сортируем варианты по убыванию скора
+        allCheckedVariants.sort((a, b) => b.matchScore - a.matchScore);
+        
+        // Берем лучший вариант
+        const bestVariant = allCheckedVariants[0];
+        
+        if (bestVariant && bestVariant.matchScore > 0) {
+            finalMatch = {
+                variantName: bestVariant.variantName,
+                instruction: bestVariant.instruction,
+                matchDetails: bestVariant.details,
+                matchScore: bestVariant.matchScore,
+                missingDetails: bestVariant.missing
+            };
+            bestMatchScore = bestVariant.matchScore;
+            console.log(`✅ Выбран вариант: "${bestVariant.variantName}" (${bestVariant.matchScore}%)`);
+        }
+    }
+
+    // Если нет подходящих вариантов с категорией, проверяем варианты без категории
+    if (!finalMatch && variantsWithoutCategory.length > 0) {
+        console.log("⚠️ Используем вариант без категории");
+        const baseScore = 60; // Базовый скор для вариантов без категории
+        finalMatch = {
+            variantName: variantsWithoutCategory[0].variantName,
+            instruction: variantsWithoutCategory[0].instruction,
+            matchDetails: ["Общие рекомендации (без специфической категории)"],
+            matchScore: baseScore,
+            missingDetails: []
+        };
+        bestMatchScore = baseScore;
+    }
+    
+    if (!finalMatch) {
+        result.push("❌ **НЕ НАЙДЕНО ПОДХОДЯЩЕГО ВАРИАНТА**");
+        result.push("");
+        
+        // Проверить, почему не подходят варианты
+        if (allCheckedVariants.length > 0) {
+            result.push("**Причины несоответствия:**");
+            
+            allCheckedVariants.forEach(variant => {
+                if (variant.missing && variant.missing.length > 0) {
+                    result.push(`- ${variant.variantName}:`);
+                    variant.missing.forEach(missing => {
+                        result.push(`  ❌ ${missing}`);
                     });
                 }
-            }
+            });
             
-            if (best_recommendations.length > 0) {
-                // Сортируем по score
-                best_recommendations.sort((a, b) => b.score - a.score);
-                const best = best_recommendations[0];
-                
-                result.push(`   **${best.diagnosis}:** ${best.variant}`);
-                
-                if (best.treatments && best.treatments.length > 0) {
-                    const main_treatment = best.treatments.find(t => 
-                        t.type === 'combination' || t.type === 'medication'
-                    ) || best.treatments[0];
-                    
-                    if (main_treatment.type === 'combination' && main_treatment.drugs) {
-                        result.push(`   **Препараты:** ${main_treatment.drugs.join(' + ')}`);
-                    } else if (main_treatment.text) {
-                        result.push(`   **Лечение:** ${main_treatment.text}`);
-                    }
-                }
-                
-                result.push(`   **Уверенность:** ${Math.round(best.score)}%`);
-                
-                if (genotype) {
-                    result.push(`   **Генотип:** ${genotype}`);
-                } else {
-                    result.push(`   **⚠️ Генотип:** не указан (рекомендуется определить)`);
-                }
-                
-                // Сохраняем ссылку на детальные рекомендации
-                result.push("");
-                result.push("---");
-                result.push("*Для просмотра всех вариантов нажмите 'Показать детали'*");
-                
-            } else {
-                result.push("   Требуется дополнительное обследование для уточнения критериев");
-            }
+            result.push("");
+            result.push("**Рекомендация:** Проверьте критерии пациента или добавьте соответствующий вариант в базу знаний.");
+        }
+        
+        return result.join("\n");
+    }
+
+    // 5. КАТЕГОРИЯ ПАЦИЕНТА
+    result.push("👤 **КАТЕГОРИЯ ПАЦИЕНТА (из базы знаний):**");
+    if (finalMatch.matchDetails && finalMatch.matchDetails.length > 0) {
+        finalMatch.matchDetails.forEach(detail => {
+            const cleanDetail = detail.replace(/[✅❌⚠️•]/g, '').trim();
+            if (cleanDetail) result.push(`• ${cleanDetail}`);
+        });
+    } else {
+        result.push("• Без специфических критериев");
+    }
+    
+    // Показываем предупреждение, если есть несоответствия
+    if (finalMatch.missingDetails && finalMatch.missingDetails.length > 0) {
+        result.push("");
+        result.push("⚠️ **НЕСООТВЕТСТВИЯ:**");
+        finalMatch.missingDetails.forEach(missing => {
+            result.push(`• ❌ ${missing}`);
+        });
+    }
+    
+    // Показываем предупреждение для низкого соответствия
+    if (bestMatchScore < 70) {
+        result.push("");
+        result.push("⚠️ **ВНИМАНИЕ:** Рекомендация имеет ограниченное соответствие критериям пациента.");
+    }
+    
+    result.push("");
+
+    // 6. РЕКОМЕНДАЦИЯ ИЗ БАЗЫ ЗНАНИЙ
+    result.push("💊 **РЕКОМЕНДАЦИЯ ИЗ БАЗЫ ЗНАНИЙ:**");
+    result.push(`**Вариант:** ${finalMatch.variantName}`);
+    
+    // Показываем оценку соответствия (УЖЕ НОРМАЛИЗОВАННУЮ)
+    const confidenceLevel = getConfidenceLevel(bestMatchScore);
+    result.push(`**Соответствие:** ${confidenceLevel} (${Math.round(bestMatchScore)}%)`);
+    result.push("");
+
+    // Извлекаем данные из инструкции
+    const instruction = finalMatch.instruction;
+    let hasSpecificRecommendations = false;
+
+    // А. ПЛАН ЛЕЧЕНЫХ ДЕЙСТВИЙ
+    const treatmentPlan = instruction["План лечебных действий"];
+    let allTreatments = [];
+    let uniqueTreatments = [];
+    let goals = [];
+
+    if (treatmentPlan) {
+        console.log("🔍 Извлекаем лечение из плана...");
+        // 1. Обрабатываем лечение
+        allTreatments = extractUniversalTreatments(treatmentPlan);
+        uniqueTreatments = removeDuplicates(allTreatments);
+        
+        if (uniqueTreatments.length > 0) {
+            result.push("**Варианты лечения:**");
+            uniqueTreatments.forEach((treatment, idx) => {
+                const cleanTreatment = treatment.replace(/\*\*/g, '').trim();
+                result.push(`${idx + 1}. ${cleanTreatment}`);
+            });
+            result.push("");
+            hasSpecificRecommendations = true;
+        }
+        
+        // 2. Цели лечения
+        goals = extractGoals(treatmentPlan);
+        if (goals.length > 0) {
+            result.push("**Цели лечения:**");
+            goals.forEach((goal, idx) => {
+                result.push(`${idx + 1}. ${goal}`);
+            });
+            result.push("");
+            hasSpecificRecommendations = true;
+        }
+        
+        // 3. Дополнительная информация
+        const additionalInfo = extractAdditionalInfo(treatmentPlan);
+        if (additionalInfo.length > 0) {
+            result.push("**Дополнительная информация:**");
+            additionalInfo.forEach((info, idx) => {
+                result.push(`${idx + 1}. ${info}`);
+            });
+            result.push("");
+            hasSpecificRecommendations = true;
         }
     }
 
-    // Краткие общие рекомендации
-    result.push("\n📋 **СЛЕДУЮЩИЕ ШАГИ**");
-    
-    const has_hepatitis = patient_diagnoses.some(d => d.toLowerCase().includes('хвгс') || d.toLowerCase().includes('гепатит') || d.toLowerCase().includes('hcv'));
-    const has_hypertension = patient_diagnoses.some(d => d.toLowerCase().includes('гипертензи') || d.toLowerCase().includes('аг') || d.toLowerCase().includes('артериальн'));
-    const has_heart_disease = patient_diagnoses.some(d => d.toLowerCase().includes('ибс') || d.toLowerCase().includes('ишемическ') || d.toLowerCase().includes('серд'));
-    const has_migraine = patient_diagnoses.some(d => d.toLowerCase().includes('мигрень') || d.toLowerCase().includes('головн'));
-    const has_fractures = patient_diagnoses.some(d => d.toLowerCase().includes('перелом') || d.toLowerCase().includes('травм') || d.toLowerCase().includes('вывих'));
+    // Б. ДОПОЛНИТЕЛЬНЫЕ РЕКОМЕНДАЦИИ
+    const specificRecommendations = extractSpecificRecommendations(instruction);
+    if (specificRecommendations.length > 0) {
+        result.push("📋 **КОНКРЕТНЫЕ РЕКОМЕНДАЦИИ:**");
+        specificRecommendations.forEach((rec, idx) => {
+            result.push(`${idx + 1}. ${rec}`);
+        });
+        result.push("");
+        hasSpecificRecommendations = true;
+    }
 
-    if (has_hepatitis) {
-        result.push("   • Проконсультируйтесь с гепатологом");
-        if (!genotype) result.push("   • **Определите генотип вируса гепатита С**");
-        if (!patient_data["Цирроз печени"] && !patient_data["Трансплантация печени"]) result.push("   • Оцените степень фиброза печени (Фиброскан/Фибротест)");
+    // В. ЕСЛИ НЕТ КОНКРЕТНЫХ РЕКОМЕНДАЦИЙ И ЛЕЧЕНИЯ
+    if (!hasSpecificRecommendations) {
+        result.push("📋 **ОБЩИЕ РЕКОМЕНДАЦИИ:**");
+        result.push("1. Выполнить назначенный план лечения");
+        result.push("2. Соблюдать все врачебные рекомендации");
+        result.push("3. Контролировать состояние в динамике");
+        result.push("4. При появлении побочных эффектов обратиться к врачу");
+        result.push("");
     }
-    
-    if (has_hypertension) {
-        result.push("   • Проконсультируйтесь с кардиологом");
-        if (!patient_data["Артериальное давление"] || typeof patient_data["Артериальное давление"] === 'string') result.push("   • Проведите суточный мониторинг артериального давления");
-        result.push("   • Оцените функцию почек и электролитный баланс");
-    }
-    
-    if (has_heart_disease) {
-        result.push("   • Выполните ЭКГ и ЭхоКГ");
-        result.push("   • Оцените риск сердечно-сосудистых осложнений");
-        if (patient_data["Возраст"] > 40) result.push("   • Рассмотрите нагрузочные тесты");
-    }
-    
-    if (has_migraine) {
-        result.push("   • Проконсультируйтесь с неврологом");
-        result.push("   • Ведите дневник головной боли");
-        if (patient_data["Приступ мигрени"] === 'тяжелый') result.push("   • Рассмотрите профилактическую терапию");
-    }
-    
-    if (has_fractures) {
-        result.push("   • Проконсультируйтесь с травматологом");
-        result.push("   • Выполните контрольную рентгенографию");
-        result.push("   • Начните раннюю реабилитацию");
-    }
-    
-    if (!has_hepatitis && !has_hypertension && !has_heart_disease && !has_migraine && !has_fractures) {
-        result.push("   • Проконсультируйтесь с профильным специалистом");
-        result.push("   • Проведите дополнительное обследование");
-    }
-    
-    result.push("   • Учитывайте индивидуальные особенности пациента");
-    result.push("   • Мониторируйте эффективность лечения");
 
+    // Дополнительное предупреждение для серьезных несоответствий
+    if (bestMatchScore < 60) {
+        result.push("⚠️ **ВАЖНОЕ ПРЕДУПРЕЖДЕНИЕ:**");
+        result.push("• Данная рекомендация НЕ полностью соответствует состоянию пациента");
+        result.push("• Необходима консультация специалиста");
+        result.push("• Рассмотреть альтернативные методы лечения");
+        result.push("");
+    }
+
+    // 7. СОХРАНЕНИЕ ДЛЯ ДЕТАЛЬНОГО АНАЛИЗА
+    window.patientDiagnoses = [patientDiagnosis].filter(d => d);
+    window.recommendations_by_diagnosis = {};
+    
+    if (finalMatch) {
+        const detailedTreatments = extractUniversalTreatments(finalMatch.instruction["План лечебных действий"]);
+        const detailedUniqueTreatments = removeDuplicates(detailedTreatments);
+        
+        window.recommendations_by_diagnosis[patientDiagnosis] = [{
+            diagnosis: patientDiagnosis,
+            variant_name: finalMatch.variantName,
+            treatments: detailedUniqueTreatments.map(treatment => treatment.replace(/\*\*/g, '').trim()),
+            match_score: bestMatchScore, // УЖЕ НОРМАЛИЗОВАННЫЙ
+            explanations: finalMatch.matchDetails || ["Общие критерии соответствия"],
+            missing_explanations: finalMatch.missingDetails || [],
+            has_contradictions: bestMatchScore < 70,
+            critical_mismatch: bestMatchScore < 50
+        }];
+        
+        window.lastRecommendation = window.recommendations_by_diagnosis[patientDiagnosis][0];
+    }
+
+    console.log("=== ЗАВЕРШЕНИЕ generate_universal_explanation ===");
+    console.log("Сохранены рекомендации:", window.recommendations_by_diagnosis);
+    console.log("Оценка соответствия (нормализованная):", bestMatchScore);
     return result.join("\n");
+}
+
+// ДОБАВЬТЕ ЭТИ ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ:
+
+function getConfidenceLevel(score) {
+    // Убедимся, что скор нормализован
+    const normalizedScore = normalizeScore(score);
+    
+    if (normalizedScore >= 90) return "✅ Отлично подходит";
+    if (normalizedScore >= 75) return "✅ Хорошо подходит";
+    if (normalizedScore >= 60) return "⚠️ Частично подходит (требует уточнения)";
+    if (normalizedScore >= 40) return "⚠️ Ограниченно подходит";
+    return "❌ Не подходит";
+}
+
+function countCriteria(variantName) {
+    if (!variantName) return 0;
+    
+    let criteriaCount = 0;
+    
+    // Разбиваем название на значимые слова
+    const words = variantName.split(/[\s,()\-–—]+/).filter(word => {
+        if (!word || word.length < 2) return false;
+        
+        // Исключаем служебные слова
+        const stopWords = ['с', 'и', 'без', 'при', 'на', 'по', 'для', 'у', 'в', 'из', 'от', 'до', 'имеется'];
+        return !stopWords.includes(word.toLowerCase());
+    });
+    
+    criteriaCount = words.length;
+    
+    // Бонусы за специфичные медицинские термины
+    const medicalTerms = {
+        'генотип': 5,
+        'цирроз': 4,
+        'трансплантац': 4,
+        'пвт': 3,
+        'степень': 3,
+        'стадия': 3,
+        'тяжел': 3,
+        'легк': 2,
+        'средн': 2,
+        'хроническ': 2,
+        'острый': 2,
+        'мигрень': 2,
+        'ибс': 2,
+        'гепатит': 2
+    };
+    
+    const lowerName = variantName.toLowerCase();
+    for (const [term, bonus] of Object.entries(medicalTerms)) {
+        if (lowerName.includes(term)) {
+            criteriaCount += bonus;
+        }
+    }
+    
+    // Бонус за числовые спецификации (генотипы 1a, 1b и т.д.)
+    if (/\b\d+[a-z]?\b/i.test(variantName)) {
+        criteriaCount += 5;
+    }
+    
+    return criteriaCount;
+}
+
+// НОВЫЕ ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ:
+
+// УДАЛЯЕТ ДУБЛИКАТЫ И СТРУКТУРИРУЕТ ВЫВОД
+function extractAllTreatments(treatmentPlan) {
+    const allTreatments = [];
+    
+    if (!treatmentPlan) return allTreatments;
+    
+    // 1. Ищем варианты лечения
+    if (treatmentPlan["вариант лечения"]) {
+        const treatmentOptions = treatmentPlan["вариант лечения"];
+        
+        for (const [optionKey, option] of Object.entries(treatmentOptions)) {
+            if (!option) continue;
+            
+            // Извлекаем лечение из этого варианта
+            const treatments = extractTreatmentsFromOption(option);
+            allTreatments.push(...treatments);
+        }
+    }
+    
+    return allTreatments;
+}
+
+// ИЗВЛЕКАЕТ ЛЕЧЕНИЕ ИЗ ОДНОГО ВАРИАНТА
+function extractTreatmentsFromOption(option) {
+    const treatments = [];
+    
+    if (!option) return treatments;
+    
+    // Проверяем медикаментозное лечение
+    if (option["медикаментозное"]) {
+        const med = option["медикаментозное"];
+        
+        // Комбинация препаратов (для гепатита)
+        if (med["комбинация"] && med["комбинация"]["Действующее вещество"]) {
+            const drugs = Object.keys(med["комбинация"]["Действующее вещество"]);
+            if (drugs.length > 0) {
+                treatments.push(`**Комбинация препаратов:** ${drugs.join(" + ")}`);
+            }
+        }
+        
+        // Отдельные действующие вещества
+        if (med["Действующее вещество"]) {
+            const substances = Object.keys(med["Действующее вещество"]);
+            if (substances.length > 0) {
+                // Добавляем режим приема, если есть
+                const details = [];
+                for (const drug of substances) {
+                    const drugData = med["Действующее вещество"][drug];
+                    if (drugData && drugData["режим"]) {
+                        details.push(`${drug} (${drugData["режим"]})`);
+                    } else {
+                        details.push(drug);
+                    }
+                }
+                treatments.push(`**Препараты:** ${details.join(", ")}`);
+            }
+        }
+        
+        // Фарм-группы
+        if (med["Фарм-группа"]) {
+            const groups = Object.keys(med["Фарм-группа"]);
+            if (groups.length > 0) {
+                treatments.push(`**Фармакологические группы:** ${groups.join(", ")}`);
+            }
+        }
+    }
+    
+    // Хирургическое лечение
+    if (option["хирургическое"]) {
+        const surgical = option["хирургическое"];
+        const procedures = Object.keys(surgical);
+        if (procedures.length > 0) {
+            procedures.forEach(procedure => {
+                const procData = surgical[procedure];
+                if (procData && procData["уточнение"] && Array.isArray(procData["уточнение"])) {
+                    treatments.push(`**Хирургическое вмешательство:** ${procedure} (${procData["уточнение"].join("; ")})`);
+                } else {
+                    treatments.push(`**Хирургическое вмешательство:** ${procedure}`);
+                }
+            });
+        }
+    }
+    
+    // Другие методы
+    if (option["иное"]) {
+        const other = option["иное"];
+        const methods = Object.keys(other);
+        if (methods.length > 0) {
+            treatments.push(`**Другие методы:** ${methods.join(", ")}`);
+        }
+    }
+    
+    return treatments;
+}
+
+// ИЗВЛЕКАЕТ ЦЕЛИ ЛЕЧЕНИЯ
+function extractGoals(treatmentPlan) {
+    const goals = [];
+    
+    if (!treatmentPlan || !treatmentPlan["Цель"]) {
+        return goals;
+    }
+    
+    const goalData = treatmentPlan["Цель"];
+    
+    for (const [goalKey, goalValue] of Object.entries(goalData)) {
+        if (!goalValue || typeof goalValue !== 'object') continue;
+        
+        for (const [action, actionData] of Object.entries(goalValue)) {
+            if (typeof actionData === 'object') {
+                for (const [subAction, subData] of Object.entries(actionData)) {
+                    if (Array.isArray(subData)) {
+                        subData.forEach(item => {
+                            goals.push(`${action} ${subAction} ${item}`);
+                        });
+                    } else if (typeof subData === 'string') {
+                        goals.push(`${action} ${subAction} ${subData}`);
+                    }
+                }
+            } else if (typeof actionData === 'string') {
+                goals.push(`${action} ${actionData}`);
+            }
+        }
+    }
+    
+    return goals;
+}
+
+// ИЗВЛЕКАЕТ ДОПОЛНИТЕЛЬНУЮ ИНФОРМАЦИЮ
+function extractAdditionalInfo(treatmentPlan) {
+    const info = [];
+    
+    if (!treatmentPlan) return info;
+    
+    // Описание лечения
+    if (treatmentPlan["описание лечения в зависимости от обстоятельств"]) {
+        const desc = treatmentPlan["описание лечения в зависимости от обстоятельств"];
+        if (desc["описание"] && Array.isArray(desc["описание"])) {
+            info.push(...desc["описание"]);
+        }
+    }
+    
+    // Место проведения
+    if (treatmentPlan["место проведения"]) {
+        info.push(`Место проведения: ${treatmentPlan["место проведения"]}`);
+    }
+    
+    // Временные аспекты
+    if (treatmentPlan["Временной аспект"]) {
+        const time = treatmentPlan["Временной аспект"];
+        if (typeof time === 'object') {
+            for (const [key, value] of Object.entries(time)) {
+                if (typeof value === 'string') {
+                    info.push(`${key}: ${value}`);
+                }
+            }
+        }
+    }
+    
+    return info;
+}
+
+// ИЗВЛЕКАЕТ КОНКРЕТНЫЕ РЕКОМЕНДАЦИИ ИЗ ИНСТРУКЦИИ
+function extractSpecificRecommendations(instruction) {
+    const recommendations = [];
+    
+    if (!instruction) return recommendations;
+    
+    // Уточнения
+    if (instruction["уточнение"] && Array.isArray(instruction["уточнение"])) {
+        instruction["уточнение"].forEach(item => {
+            if (item.toLowerCase().includes('рекоменду') || 
+                item.toLowerCase().includes('следует') ||
+                item.toLowerCase().includes('необходимо') ||
+                item.toLowerCase().includes('применять') ||
+                item.toLowerCase().includes('целевой') ||
+                item.toLowerCase().includes('поддерживать') ||
+                item.toLowerCase().includes('контролировать')) {
+                recommendations.push(item);
+            }
+        });
+    }
+    
+    // Из описания лечения
+    if (instruction["План лечебных действий"] && 
+        instruction["План лечебных действий"]["описание лечения в зависимости от обстоятельств"]) {
+        const desc = instruction["План лечебных действий"]["описание лечения в зависимости от обстоятельств"];
+        if (desc["описание"] && Array.isArray(desc["описание"])) {
+            desc["описание"].forEach(item => {
+                if (item.toLowerCase().includes('рекоменду') || 
+                    item.toLowerCase().includes('рекомендовано') ||
+                    item.toLowerCase().includes('целесообразно') ||
+                    item.toLowerCase().includes('показано')) {
+                    recommendations.push(item);
+                }
+            });
+        }
+    }
+    
+    return recommendations;
+}
+
+// УДАЛЯЕТ ДУБЛИКАТЫ ИЗ МАССИВА
+function removeDuplicates(array) {
+    const seen = new Set();
+    const result = [];
+    
+    for (const item of array) {
+        // Создаем "ключ" для сравнения (убираем маркдаун и лишние пробелы)
+        const key = item.replace(/\*\*/g, '').replace(/\*/g, '').trim().toLowerCase();
+        
+        if (!seen.has(key)) {
+            seen.add(key);
+            result.push(item);
+        }
+    }
+    
+    return result;
+}
+
+// НОВАЯ УНИВЕРСАЛЬНАЯ ФУНКЦИЯ ДЛЯ ПОИСКА ЛЕЧЕНИЙ
+function extractUniversalTreatments(treatmentPlan) {
+    const treatments = [];
+    
+    if (!treatmentPlan || typeof treatmentPlan !== 'object') {
+        console.log("❌ Нет плана лечения или неверный формат");
+        return treatments;
+    }
+    
+    console.log("🔍 УНИВЕРСАЛЬНЫЙ поиск лечения в:", Object.keys(treatmentPlan));
+    
+    // 1. Прямой поиск в верхнем уровне
+    function searchDirectly(obj, path = '') {
+        if (!obj || typeof obj !== 'object') return;
+        
+        // Проверяем Действующее вещество
+        if (obj["Действующее вещество"]) {
+            const substances = obj["Действующее вещество"];
+            const substanceNames = Object.keys(substances);
+            
+            if (substanceNames.length > 0) {
+                const details = [];
+                for (const drug of substanceNames) {
+                    const drugData = substances[drug];
+                    if (drugData && drugData["режим"]) {
+                        details.push(`${drug} (${drugData["режим"]})`);
+                    } else {
+                        details.push(drug);
+                    }
+                }
+                treatments.push(`**Препараты:** ${details.join(", ")}`);
+            }
+        }
+        
+        // Проверяем Фарм-группа
+        if (obj["Фарм-группа"]) {
+            const groups = obj["Фарм-группа"];
+            const groupNames = Object.keys(groups);
+            
+            if (groupNames.length > 0) {
+                treatments.push(`**Фарм-группы:** ${groupNames.join(", ")}`);
+                
+                // Ищем действующие вещества внутри фарм-групп
+                for (const groupName of groupNames) {
+                    const groupData = groups[groupName];
+                    if (groupData && groupData["Действующее вещество"]) {
+                        const substances = Object.keys(groupData["Действующее вещество"]);
+                        if (substances.length > 0) {
+                            treatments.push(`**Действующее вещество (${groupName}):** ${substances.join(", ")}`);
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Проверяем медикаментозное
+        if (obj["медикаментозное"]) {
+            searchDirectly(obj["медикаментозное"], path + "медикаментозное.");
+        }
+        
+        // Проверяем вариант лечения
+        if (obj["вариант лечения"]) {
+            const treatmentOptions = obj["вариант лечения"];
+            for (const [optionKey, option] of Object.entries(treatmentOptions)) {
+                if (option && typeof option === 'object') {
+                    searchDirectly(option, path + `вариант лечения.${optionKey}.`);
+                }
+            }
+        }
+        
+        // Рекурсивный поиск во вложенных объектах
+        for (const [key, value] of Object.entries(obj)) {
+            if (typeof value === 'object' && value !== null && 
+                !["Действующее вещество", "Фарм-группа", "медикаментозное", "вариант лечения"].includes(key)) {
+                if (path.split('.').length < 5) { // Ограничиваем глубину
+                    searchDirectly(value, path + key + '.');
+                }
+            }
+        }
+    }
+    
+    // Запускаем поиск
+    searchDirectly(treatmentPlan);
+    
+    // 2. Если ничего не нашли, ищем через медикаментозное
+    if (treatments.length === 0 && treatmentPlan["медикаментозное"]) {
+        console.log("🔍 Ищем в медикаментозное напрямую");
+        const med = treatmentPlan["медикаментозное"];
+        searchDirectly(med, "медикаментозное.");
+    }
+    
+    // 3. Если все еще ничего, ищем в любом объекте
+    if (treatments.length === 0) {
+        console.log("🔍 Глубокий поиск во всей структуре");
+        function deepSearch(obj) {
+            if (!obj || typeof obj !== 'object') return;
+            
+            for (const [key, value] of Object.entries(obj)) {
+                // Ищем любые лекарственные названия
+                if (typeof value === 'object' && value !== null) {
+                    if (Object.keys(value).some(k => 
+                        k.toLowerCase().includes('препарат') || 
+                        k.toLowerCase().includes('лекарство') ||
+                        k.toLowerCase().includes('вещество') ||
+                        k.toLowerCase().includes('медикамент'))) {
+                        console.log("🔍 Найдено что-то похожее на лекарства в:", key);
+                        searchDirectly(value, key + '.');
+                    }
+                    deepSearch(value);
+                }
+            }
+        }
+        deepSearch(treatmentPlan);
+    }
+    
+    // Убираем дубликаты
+    const uniqueTreatments = [];
+    const seen = new Set();
+    
+    for (const treatment of treatments) {
+        // Нормализуем строку для сравнения
+        const cleanTreatment = treatment
+            .replace(/\*\*/g, '')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .toLowerCase();
+        
+        if (!seen.has(cleanTreatment) && cleanTreatment.length > 5) {
+            seen.add(cleanTreatment);
+            uniqueTreatments.push(treatment);
+        }
+    }
+    
+    console.log("📋 Извлеченные лечения:", uniqueTreatments);
+    return uniqueTreatments;
+}
+
+// УНИВЕРСАЛЬНАЯ ФУНКЦИЯ ПОИСКА ЛЕЧЕНИЙ В ОБЪЕКТЕ
+function searchForTreatmentsInObject(obj, depth = 0) {
+    const results = [];
+    
+    if (!obj || typeof obj !== 'object' || depth > 5) {
+        return results;
+    }
+    
+    // БАЗОВЫЕ СЛУЧАИ: находим конкретные рекомендации
+    
+    // 1. Комбинация препаратов (гепатит C)
+    if (obj["комбинация"] && obj["комбинация"]["Действующее вещество"]) {
+        const drugs = Object.keys(obj["комбинация"]["Действующее вещество"]);
+        if (drugs.length > 0) {
+            results.push(`**Комбинация препаратов:** ${drugs.join(" + ")}`);
+        }
+    }
+    
+    // 2. Отдельные действующие вещества
+    if (obj["Действующее вещество"]) {
+        const substances = Object.keys(obj["Действующее вещество"]);
+        if (substances.length > 0) {
+            const details = [];
+            // Проверяем есть ли режим приема
+            substances.forEach(substance => {
+                const substanceData = obj["Действующее вещество"][substance];
+                if (substanceData && substanceData["режим"]) {
+                    details.push(`${substance} (${substanceData["режим"]})`);
+                } else {
+                    details.push(substance);
+                }
+            });
+            results.push(`**Препараты:** ${details.join(", ")}`);
+        }
+    }
+    
+    // 3. Фарм-группы
+    if (obj["Фарм-группа"]) {
+        const groups = Object.keys(obj["Фарм-группа"]);
+        if (groups.length > 0) {
+            results.push(`**Фарм-группы:** ${groups.join(", ")}`);
+        }
+    }
+    
+    // 4. Хирургические вмешательства
+    if (obj["хирургическое"]) {
+        const procedures = Object.keys(obj["хирургическое"]);
+        if (procedures.length > 0) {
+            procedures.forEach(procedure => {
+                const procData = obj["хирургическое"][procedure];
+                if (procData && procData["уточнение"] && Array.isArray(procData["уточнение"])) {
+                    results.push(`**Хирургическое:** ${procedure}: ${procData["уточнение"].join(", ")}`);
+                } else {
+                    results.push(`**Хирургическое:** ${procedure}`);
+                }
+            });
+        }
+    }
+    
+    // 5. Другие методы лечения
+    if (obj["иное"]) {
+        const otherMethods = Object.keys(obj["иное"]);
+        if (otherMethods.length > 0) {
+            results.push(`**Другие методы:** ${otherMethods.join(", ")}`);
+        }
+    }
+    
+    // 6. Конкретные названия методов
+    const specificMethodNames = [
+        'медикаментозное', 'хирургическое', 'иное', 'препарат 1-й линии',
+        'органические нитраты короткого действия', 'анальгетики', 'антиэметики'
+    ];
+    
+    specificMethodNames.forEach(methodName => {
+        if (obj[methodName]) {
+            const nestedResults = searchForTreatmentsInObject(obj[methodName], depth + 1);
+            if (nestedResults.length > 0) {
+                results.push(...nestedResults);
+            }
+        }
+    });
+    
+    // РЕКУРСИВНЫЙ ПОИСК ВО ВЛОЖЕННЫХ ОБЪЕКТАХ
+    for (const key in obj) {
+        if (key !== 'вариант лечения' && // Уже обработали выше
+            typeof obj[key] === 'object' && 
+            obj[key] !== null) {
+            const nestedResults = searchForTreatmentsInObject(obj[key], depth + 1);
+            if (nestedResults.length > 0) {
+                results.push(...nestedResults);
+            }
+        }
+    }
+    
+    return results;
+}
+
+// УНИВЕРСАЛЬНАЯ ФУНКЦИЯ ДЛЯ ПОИСКА ЦЕЛЕЙ
+function extractUniversalGoals(treatmentPlan) {
+    const goals = [];
+    
+    if (!treatmentPlan || !treatmentPlan["Цель"]) {
+        return goals;
+    }
+    
+    const goalData = treatmentPlan["Цель"];
+    
+    // Перебираем все цели (может быть "1", "2", и т.д.)
+    for (const [goalKey, goalValue] of Object.entries(goalData)) {
+        if (!goalValue || typeof goalValue !== 'object') continue;
+        
+        // Ищем во всех полях цели
+        for (const [action, actionData] of Object.entries(goalValue)) {
+            if (typeof actionData === 'object') {
+                // Например: "создать условия": {"для": ["..."]}
+                for (const [subAction, subData] of Object.entries(actionData)) {
+                    if (Array.isArray(subData)) {
+                        subData.forEach(item => {
+                            goals.push(`${action} ${subAction} ${item}`);
+                        });
+                    } else if (typeof subData === 'string') {
+                        goals.push(`${action} ${subAction} ${subData}`);
+                    }
+                }
+            } else if (typeof actionData === 'string') {
+                goals.push(`${action} ${actionData}`);
+            }
+        }
+    }
+    
+    return goals;
+}
+
+// Вспомогательная функция для подсчета критериев (остается без изменений)
+function countCriteria(variantName) {
+    if (!variantName) return 0;
+    
+    let criteriaCount = 0;
+    
+    // Разбиваем название на значимые слова
+    const words = variantName.split(/[\s,()\-–—]+/).filter(word => {
+        if (!word || word.length < 2) return false;
+        
+        // Исключаем служебные слова
+        const stopWords = ['с', 'и', 'без', 'при', 'на', 'по', 'для', 'у', 'в', 'из', 'от', 'до'];
+        return !stopWords.includes(word.toLowerCase());
+    });
+    
+    criteriaCount = words.length;
+    
+    // Бонусы за специфичные медицинские термины
+    const medicalTerms = {
+        'генотип': 5,
+        'цирроз': 4,
+        'трансплантац': 4,
+        'пвт': 3,
+        'степень': 3,
+        'стадия': 3,
+        'тяжел': 3,
+        'легк': 2,
+        'средн': 2,
+        'хроническ': 2,
+        'острый': 2
+    };
+    
+    const lowerName = variantName.toLowerCase();
+    for (const [term, bonus] of Object.entries(medicalTerms)) {
+        if (lowerName.includes(term)) {
+            criteriaCount += bonus;
+        }
+    }
+    
+    // Бонус за числовые спецификации (генотипы 1a, 1b и т.д.)
+    if (/\b\d+[a-z]?\b/i.test(variantName)) {
+        criteriaCount += 5;
+    }
+    
+    return criteriaCount;
+}
+
+// ДОБАВЬТЕ эти вспомогательные функции:
+
+function extractGoals(goalData) {
+    const goals = [];
+    
+    if (!goalData || typeof goalData !== 'object') {
+        return goals;
+    }
+    
+    function extractFromObject(obj, prefix = "") {
+        if (!obj || typeof obj !== 'object') return;
+        
+        for (const [key, value] of Object.entries(obj)) {
+            const newPrefix = prefix ? `${prefix} ${key}` : key;
+            
+            if (typeof value === 'string' && value.trim()) {
+                goals.push(`${newPrefix}: ${value}`);
+            } else if (typeof value === 'object') {
+                if (Array.isArray(value)) {
+                    value.forEach(item => {
+                        if (typeof item === 'string') {
+                            goals.push(`${newPrefix}: ${item}`);
+                        }
+                    });
+                } else {
+                    extractFromObject(value, newPrefix);
+                }
+            }
+        }
+    }
+    
+    extractFromObject(goalData);
+    return goals;
+}
+
+function extractSpecificRecommendations(instruction) {
+    const recommendations = [];
+    
+    if (!instruction || typeof instruction !== 'object') return recommendations;
+    
+    // Рекурсивный поиск рекомендаций
+    function searchRecommendations(obj) {
+        if (!obj || typeof obj !== 'object') return;
+        
+        for (const [key, value] of Object.entries(obj)) {
+            if (typeof value === 'string') {
+                // Ищем ключевые слова
+                const lowerValue = value.toLowerCase();
+                if (lowerValue.includes('рекоменду') || 
+                    lowerValue.includes('следует') ||
+                    lowerValue.includes('необходимо') ||
+                    lowerValue.includes('целесообразно') ||
+                    lowerValue.includes('показано') ||
+                    lowerValue.includes('рекомендация')) {
+                    recommendations.push(value);
+                }
+            } else if (Array.isArray(value)) {
+                value.forEach(item => {
+                    if (typeof item === 'string') {
+                        const lowerItem = item.toLowerCase();
+                        if (lowerItem.includes('рекоменду') || 
+                            lowerItem.includes('следует') ||
+                            lowerItem.includes('необходимо')) {
+                            recommendations.push(item);
+                        }
+                    }
+                });
+            } else if (typeof value === 'object') {
+                searchRecommendations(value);
+            }
+        }
+    }
+    
+    searchRecommendations(instruction);
+    return recommendations;
+}
+
+function extractTreatments(treatmentOptions) {
+    const treatments = [];
+    
+    if (!treatmentOptions || typeof treatmentOptions !== 'object') {
+        return treatments;
+    }
+    
+    for (const [key, option] of Object.entries(treatmentOptions)) {
+        if (option["медикаментозное"]) {
+            const med = option["медикаментозное"];
+            
+            // Комбинация препаратов
+            if (med["комбинация"]) {
+                const combo = med["комбинация"];
+                if (combo["Действующее вещество"]) {
+                    const drugs = Object.keys(combo["Действующее вещество"]);
+                    if (drugs.length > 0) {
+                        treatments.push(`**Комбинация препаратов:** ${drugs.join(" + ")}`);
+                    }
+                }
+            }
+            
+            // Отдельные препараты
+            if (med["Действующее вещество"]) {
+                const substances = med["Действующее вещество"];
+                for (const [drugName, drugData] of Object.entries(substances)) {
+                    if (drugData && typeof drugData === 'object') {
+                        if (drugData["режим"]) {
+                            treatments.push(`**${drugName}:** ${drugData["режим"]}`);
+                        } else {
+                            treatments.push(`**${drugName}**`);
+                        }
+                    } else {
+                        treatments.push(`**${drugName}**`);
+                    }
+                }
+            }
+            
+            // Фарм-группы
+            if (med["Фарм-группа"]) {
+                const groups = Object.keys(med["Фарм-группа"]);
+                if (groups.length > 0) {
+                    treatments.push(`**Фарм-группы:** ${groups.join(", ")}`);
+                }
+            }
+        }
+        
+        if (option["хирургическое"]) {
+            const surgical = option["хирургическое"];
+            const procedures = Object.keys(surgical);
+            if (procedures.length > 0) {
+                treatments.push(`**Хирургические вмешательства:** ${procedures.join(", ")}`);
+            }
+        }
+        
+        if (option["иное"]) {
+            const other = option["иное"];
+            if (other["метод реабилитации"]) {
+                const methods = Object.keys(other["метод реабилитации"]);
+                treatments.push(`**Методы реабилитации:** ${methods.join(", ")}`);
+            }
+        }
+    }
+    
+    return treatments;
+}
+// ДОБАВЬТЕ эту функцию для подсчета критериев:
+function countCriteria(variantName) {
+    let criteriaCount = 0;
+    
+    // Подсчитываем слова в названии варианта (чем больше слов, тем более специфичный)
+    const words = variantName.split(/[\s,()]+/).filter(word => 
+        word.length > 2 && 
+        !['с', 'и', 'без', 'при', 'на', 'по', 'для'].includes(word.toLowerCase())
+    );
+    
+    criteriaCount = words.length;
+    
+    // Бонусные критерии за специфичность
+    if (variantName.toLowerCase().includes('генотип')) criteriaCount += 3;
+    if (variantName.includes('1a') || variantName.includes('1b') || variantName.includes('2')) criteriaCount += 5;
+    if (variantName.toLowerCase().includes('цирроз') || variantName.includes('ЦП')) criteriaCount += 2;
+    if (variantName.toLowerCase().includes('трансплантац')) criteriaCount += 2;
+    if (variantName.toLowerCase().includes('пвт')) criteriaCount += 2;
+    
+    return criteriaCount;
+}
+
+// ДОБАВЬТЕ эти вспомогательные функции:
+function checkPatientCategory(patientCategory, patientData) {
+    const result = {
+        matches: true,
+        details: [],
+        missing: []
+    };
+
+    if (!patientCategory) {
+        return result;
+    }
+
+    // Проверяем Наблюдения
+    if (patientCategory["Наблюдение"]) {
+        const observations = patientCategory["Наблюдение"];
+        if (Array.isArray(observations)) {
+            observations.forEach(obs => {
+                for (const [obsName, obsValue] of Object.entries(obs)) {
+                    // Проверяем соответствие выраженности
+                    if (obsName === "Приступ мигрени" && obsValue["Качественное значение"]) {
+                        const allowedSeverities = Object.keys(obsValue["Качественное значение"]);
+                        const patientSeverity = patientData["Выраженность"];
+                        
+                        if (patientSeverity && !allowedSeverities.some(severity => 
+                            severity.toLowerCase().includes(patientSeverity.toLowerCase()) ||
+                            patientSeverity.toLowerCase().includes(severity.toLowerCase())
+                        )) {
+                            result.matches = false;
+                            result.missing.push(`Выраженность мигрени: "${patientSeverity}" не соответствует критериям (требуется: ${allowedSeverities.join(", ")})`);
+                        } else if (patientSeverity) {
+                            result.details.push(`✅ Приступ мигрени: ${patientSeverity} соответствует`);
+                        }
+                    }
+                }
+            });
+        }
+    }
+
+    return result;
+}
+function checkFactor(factorName, factorValue, patientData) {
+    console.log(`🔍 Проверка фактора "${factorName}":`, {
+        'Ожидается': factorValue,
+        'Тип значения': typeof factorValue
+    });
+    
+    // Получаем значение пациента
+    const patientValue = extractPatientValue(factorName, patientData);
+    console.log(`Значение у пациента для "${factorName}":`, patientValue);
+    
+    // 1. ПРОВЕРКА: Если в базе знаний требуется ОТСУТСТВИЕ чего-либо
+    // Например: "отсутствует", "не проводилась", "нет"
+    const requiresAbsence = checkIfRequiresAbsence(factorValue);
+    
+    if (requiresAbsence) {
+        console.log(`✅ Для "${factorName}" требуется отсутствие`);
+        
+        // Если у пациента нет значения или значение указывает на отсутствие
+        if (!patientValue || patientValue === "" || patientValue === "undefined") {
+            console.log(`✅ У пациента не указано "${factorName}" - считаем отсутствием`);
+            return { 
+                matches: true, 
+                message: `${factorName}: не указано (требуется отсутствие) ✅` 
+            };
+        }
+        
+        // Проверяем, не указано ли у пациента что это есть
+        const patientHasIt = checkIfPatientHasIt(patientValue, factorName);
+        if (!patientHasIt) {
+            return { 
+                matches: true, 
+                message: `${factorName}: ${patientValue} (отсутствует) ✅` 
+            };
+        } else {
+            return { 
+                matches: false, 
+                message: `${factorName}: ${patientValue} (а должно отсутствовать) ❌` 
+            };
+        }
+    }
+    
+    // 2. ПРОВЕРКА: Если у пациента нет значения
+    if (!patientValue || patientValue === "" || patientValue === "undefined") {
+        console.log(`⚠️ У пациента нет значения для "${factorName}"`);
+        
+        // Если требуется конкретное значение (не отсутствие)
+        return { 
+            matches: false, 
+            message: `${factorName}: не указано (требуется: ${JSON.stringify(factorValue)}) ❌` 
+        };
+    }
+    
+    // 3. ПРОВЕРКА РАЗНЫХ ТИПОВ ЗНАЧЕНИЙ (остается как было)
+    if (typeof factorValue === 'object' && factorValue !== null) {
+        if (factorValue["качественное значение"]) {
+            const expectedValues = factorValue["качественное значение"];
+            if (Array.isArray(expectedValues)) {
+                return checkArrayMatch(factorName, patientValue, expectedValues);
+            }
+        }
+        
+        if (factorValue["Качественное значение"]) {
+            const qualValues = factorValue["Качественное значение"];
+            const expectedValues = Object.keys(qualValues);
+            return checkArrayMatch(factorName, patientValue, expectedValues);
+        }
+        
+        if (factorValue["Характеристика"]) {
+            return { 
+                matches: true, 
+                message: `${factorName}: характеристики учтены ✅` 
+            };
+        }
+        
+        // Вложенный объект (например, "Опыт терапии": {"ПВТ (противовирусной терапии)": {"отсутствует": {}}})
+        for (const [key, nestedValue] of Object.entries(factorValue)) {
+            if (typeof nestedValue === 'object') {
+                const nestedCheck = checkFactor(key, nestedValue, patientData);
+                if (!nestedCheck.matches) {
+                    return nestedCheck;
+                }
+                return { 
+                    matches: true, 
+                    message: `${factorName}: ${nestedCheck.message}` 
+                };
+            }
+        }
+    } 
+    
+    else if (Array.isArray(factorValue)) {
+        return checkArrayMatch(factorName, patientValue, factorValue);
+    }
+    
+    else if (typeof factorValue === 'string') {
+        if (patientValue.toLowerCase().includes(factorValue.toLowerCase()) ||
+            factorValue.toLowerCase().includes(patientValue.toLowerCase())) {
+            return { 
+                matches: true, 
+                message: `${factorName}: ${patientValue} (совпадает с "${factorValue}") ✅` 
+            };
+        } else {
+            return { 
+                matches: false, 
+                message: `${factorName}: ${patientValue} ≠ "${factorValue}" ❌` 
+            };
+        }
+    }
+    
+    return { 
+        matches: true, 
+        message: `${factorName}: учтено ✅` 
+    };
+}
+
+// ДОБАВЬТЕ эти вспомогательные функции:
+
+function checkIfRequiresAbsence(factorValue) {
+    // Проверяем, требует ли фактор ОТСУТСТВИЯ чего-либо
+    
+    if (typeof factorValue === 'string') {
+        const lowerValue = factorValue.toLowerCase();
+        return lowerValue.includes('отсутствует') || 
+               lowerValue.includes('не проводилась') || 
+               lowerValue.includes('нет') ||
+               lowerValue.includes('без');
+    }
+    
+    if (Array.isArray(factorValue)) {
+        return factorValue.some(item => {
+            if (typeof item === 'string') {
+                const lowerItem = item.toLowerCase();
+                return lowerItem.includes('отсутствует') || 
+                       lowerItem.includes('не проводилась') || 
+                       lowerItem.includes('нет') ||
+                       lowerItem.includes('без');
+            }
+            return false;
+        });
+    }
+    
+    if (typeof factorValue === 'object' && factorValue !== null) {
+        // Проверяем "качественное значение" массив
+        if (factorValue["качественное значение"]) {
+            const expectedValues = factorValue["качественное значение"];
+            if (Array.isArray(expectedValues)) {
+                return expectedValues.some(item => {
+                    if (typeof item === 'string') {
+                        const lowerItem = item.toLowerCase();
+                        return lowerItem.includes('отсутствует') || 
+                               lowerItem.includes('не проводилась') || 
+                               lowerItem.includes('нет') ||
+                               lowerItem.includes('без');
+                    }
+                    return false;
+                });
+            }
+        }
+        
+        // Проверяем "Качественное значение" объект
+        if (factorValue["Качественное значение"]) {
+            const qualValues = factorValue["Качественное значение"];
+            const expectedValues = Object.keys(qualValues);
+            return expectedValues.some(item => {
+                const lowerItem = item.toLowerCase();
+                return lowerItem.includes('отсутствует') || 
+                       lowerItem.includes('не проводилась') || 
+                       lowerItem.includes('нет') ||
+                       lowerItem.includes('без');
+            });
+        }
+    }
+    
+    return false;
+}
+
+function checkIfPatientHasIt(patientValue, factorName) {
+    // Проверяем, указывает ли значение пациента на наличие чего-либо
+    
+    if (!patientValue) return false;
+    
+    const lowerValue = patientValue.toLowerCase();
+    
+    // Если в значении есть указание на наличие
+    if (lowerValue.includes('есть') || 
+        lowerValue.includes('имеется') || 
+        lowerValue.includes('да') ||
+        lowerValue.includes('присутствует') ||
+        lowerValue.includes('проводилась') ||
+        lowerValue.includes('положительный')) {
+        return true;
+    }
+    
+    // Если это конкретное заболевание или состояние
+    if (lowerValue.includes('цирроз') || 
+        lowerValue.includes('трансплантац') ||
+        lowerValue.includes('оперирован')) {
+        return true;
+    }
+    
+    return false;
+}
+
+function checkArrayMatch(factorName, patientValue, expectedArray) {
+    const patientLower = patientValue.toLowerCase();
+    
+    const found = expectedArray.some(expected => {
+        if (!expected) return false;
+        const expectedLower = String(expected).toLowerCase();
+        
+        // Проверяем разные варианты совпадения
+        return patientLower.includes(expectedLower) ||
+               expectedLower.includes(patientLower) ||
+               patientLower === expectedLower;
+    });
+    
+    if (found) {
+        return { 
+            matches: true, 
+            message: `${factorName}: ${patientValue} (совпадает) ✅` 
+        };
+    } else {
+        return { 
+            matches: false, 
+            message: `${factorName}: ${patientValue} ≠ ${expectedArray.join(" или ")} ❌` 
+        };
+    }
+}
+
+// ДОБАВЬТЕ эту вспомогательную функцию:
+function checkArrayMatch(factorName, patientValue, expectedArray) {
+    const found = expectedArray.some(expected => {
+        if (!expected) return false;
+        
+        const patientLower = patientValue.toLowerCase();
+        const expectedLower = String(expected).toLowerCase();
+        
+        // Проверяем разные варианты совпадения
+        return patientLower.includes(expectedLower) ||
+               expectedLower.includes(patientLower) ||
+               patientLower === expectedLower;
+    });
+    
+    if (found) {
+        return { 
+            matches: true, 
+            message: `${factorName}: ${patientValue} (совпадает с одним из: ${expectedArray.join(", ")}) ✅` 
+        };
+    } else {
+        return { 
+            matches: false, 
+            message: `${factorName}: ${patientValue} ≠ ${expectedArray.join(" или ")} ❌` 
+        };
+    }
+}
+
+function checkObservation(obsName, obsValue, patientData) {
+    // Упрощенная проверка наблюдений
+    return { matches: true, message: `${obsName}: наблюдение учтено` };
+}
+
+function extractPatientValue(fieldName, patientData) {
+    if (!patientData) {
+        console.log(`❌ Нет данных пациента для поиска "${fieldName}"`);
+        return "";
+    }
+    
+    // Нормализуем имя поля для поиска
+    const fieldNameLower = fieldName.toLowerCase().replace(/\s+/g, '').replace(/[^а-яa-z0-9]/g, '');
+    
+    // 1. Прямой поиск
+    if (patientData[fieldName] !== undefined) {
+        const value = patientData[fieldName];
+        console.log(`✅ Найдено прямое совпадение для "${fieldName}":`, value);
+        return Array.isArray(value) ? value[0] : String(value);
+    }
+    
+    // 2. Поиск по частичному совпадению
+    for (const [key, value] of Object.entries(patientData)) {
+        const keyLower = key.toLowerCase().replace(/\s+/g, '').replace(/[^а-яa-z0-9]/g, '');
+        
+        if (keyLower.includes(fieldNameLower) || fieldNameLower.includes(keyLower)) {
+            console.log(`✅ Найдено частичное совпадение "${key}" для "${fieldName}":`, value);
+            return Array.isArray(value) ? value[0] : String(value);
+        }
+    }
+    
+    // 3. Поиск по ключевым словам
+    const keywords = {
+        'цирроз': ['цирроз', 'cirrhosis', 'цп'],
+        'трансплантац': ['трансплантац', 'transplant'],
+        'генотип': ['генотип', 'genotype'],
+        'пвт': ['пвт', 'противовирусн', 'antiviral'],
+        'опыт': ['опыт', 'experience', 'терапии']
+    };
+    
+    for (const [keyword, variations] of Object.entries(keywords)) {
+        if (fieldNameLower.includes(keyword)) {
+            for (const [key, value] of Object.entries(patientData)) {
+                const keyLower = key.toLowerCase();
+                if (variations.some(variation => keyLower.includes(variation))) {
+                    console.log(`✅ Найдено по ключевому слову "${keyword}" в "${key}":`, value);
+                    return Array.isArray(value) ? value[0] : String(value);
+                }
+            }
+        }
+    }
+    
+    console.log(`❌ Не найдено поле "${fieldName}" в данных пациента`);
+    console.log("Доступные поля:", Object.keys(patientData));
+    return "";
+}
+
+function extractTreatments(treatmentPlan) {
+    const treatments = [];
+    
+    if (!treatmentPlan) {
+        return treatments;
+    }
+    
+    // 1. Сначала ищем "вариант лечения"
+    if (treatmentPlan["вариант лечения"]) {
+        const treatmentOptions = treatmentPlan["вариант лечения"];
+        
+        // Перебираем все варианты (может быть "1", "2", "3" и т.д.)
+        for (const [optionKey, option] of Object.entries(treatmentOptions)) {
+            if (!option) continue;
+            
+            // УНИВЕРСАЛЬНЫЙ ПОИСК лекарств в любой структуре
+            const foundDrugs = findDrugsInObject(option);
+            if (foundDrugs.length > 0) {
+                treatments.push(...foundDrugs);
+            }
+        }
+    }
+    
+    return treatments;
+}
+
+// Новая универсальная функция поиска лекарств
+function findDrugsInObject(obj) {
+    const results = [];
+    
+    if (!obj || typeof obj !== 'object') {
+        return results;
+    }
+    
+    // Ищем комбинацию препаратов
+    if (obj["комбинация"] && obj["комбинация"]["Действующее вещество"]) {
+        const drugs = Object.keys(obj["комбинация"]["Действующее вещество"]);
+        if (drugs.length > 0) {
+            results.push(`**Комбинация препаратов:** ${drugs.join(" + ")}`);
+        }
+    }
+    
+    // Ищем отдельные действующие вещества
+    if (obj["Действующее вещество"]) {
+        const substances = Object.keys(obj["Действующее вещество"]);
+        if (substances.length > 0) {
+            results.push(`**Действующее вещество:** ${substances.join(", ")}`);
+        }
+    }
+    
+    // Ищем в медикаментозном разделе
+    if (obj["медикаментозное"]) {
+        const medResults = findDrugsInObject(obj["медикаментозное"]);
+        results.push(...medResults);
+    }
+    
+    // Ищем фарм-группы
+    if (obj["Фарм-группа"]) {
+        const groups = Object.keys(obj["Фарм-группа"]);
+        if (groups.length > 0) {
+            results.push(`**Фарм-группы:** ${groups.join(", ")}`);
+        }
+    }
+    
+    // Рекурсивно ищем во вложенных объектах
+    for (const key in obj) {
+        if (typeof obj[key] === 'object' && obj[key] !== null) {
+            const nestedResults = findDrugsInObject(obj[key]);
+            results.push(...nestedResults);
+        }
+    }
+    
+    return results;
 }
 
 // Новая функция для проверки подходит ли рекомендация
@@ -1144,6 +2405,130 @@ function extract_other_treatment(other_data) {
     return treatments;
 }
 
+function calculateMatchScoreWithNormalization(matchResult, variantName, patientData) {
+    // БАЗОВЫЙ СКОР
+    let matchScore = 50;
+    
+    // 1. БАЗОВОЕ СООТВЕТСТВИЕ
+    if (matchResult.matches) {
+        matchScore += 20; // За общее соответствие
+    } else {
+        matchScore -= 30; // Штраф за несоответствие
+    }
+    
+    // 2. ДЕТАЛИЗАЦИЯ (ограниченное влияние)
+    if (matchResult.details && matchResult.details.length > 0) {
+        // Максимум +10% за детали
+        matchScore += Math.min(10, matchResult.details.length * 2);
+    }
+    
+    // 3. НЕСООТВЕТСТВИЯ (большой штраф)
+    if (matchResult.missing && matchResult.missing.length > 0) {
+        matchScore -= Math.min(40, matchResult.missing.length * 8);
+    }
+    
+    // 4. СПЕЦИФИЧНОСТЬ ВАРИАНТА (ограниченный бонус)
+    const specificityBonus = countCriteriaNormalized(variantName);
+    matchScore += specificityBonus;
+    
+    // 5. ПРОВЕРКА СПЕЦИФИЧНЫХ КРИТЕРИЕВ (например, генотип для гепатита)
+    const specificCriteriaBonus = evaluateSpecificCriteria(variantName, patientData);
+    matchScore += specificCriteriaBonus;
+    
+    // 6. НОРМАЛИЗАЦИЯ К 100%
+    matchScore = normalizeScore(matchScore);
+    
+    console.log(`📈 Скор для "${variantName}": ${matchScore}% (до нормализации: ${matchScore})`);
+    
+    return matchScore;
+}
+
+function normalizeScore(score) {
+    // Гарантируем, что скор будет в диапазоне 0-100%
+    const normalized = Math.max(0, Math.min(100, score));
+    
+    // Округляем до целого числа
+    return Math.round(normalized);
+}
+
+function countCriteriaNormalized(variantName) {
+    if (!variantName) return 0;
+    
+    let criteriaCount = 0;
+    
+    // Разбиваем название на значимые слова
+    const words = variantName.split(/[\s,()\-–—]+/).filter(word => {
+        if (!word || word.length < 2) return false;
+        
+        // Исключаем служебные слова
+        const stopWords = ['с', 'и', 'без', 'при', 'на', 'по', 'для', 'у', 'в', 'из', 'от', 'до', 'имеется'];
+        return !stopWords.includes(word.toLowerCase());
+    });
+    
+    // Базовый подсчет слов (максимум 5 баллов)
+    criteriaCount = Math.min(5, words.length);
+    
+    // Бонусы за специфичные медицинские термины (максимум 10 баллов)
+    const medicalTerms = {
+        'генотип': 2,
+        'цирроз': 2,
+        'трансплантац': 2,
+        'пвт': 1,
+        'степень': 1,
+        'стадия': 1,
+        'тяжел': 1,
+        'легк': 1,
+        'средн': 1,
+        'хроническ': 1,
+        'острый': 1
+    };
+    
+    const lowerName = variantName.toLowerCase();
+    for (const [term, bonus] of Object.entries(medicalTerms)) {
+        if (lowerName.includes(term)) {
+            criteriaCount += bonus;
+        }
+    }
+    
+    // Ограничиваем общий бонус 15 баллами
+    return Math.min(15, criteriaCount);
+}
+
+function evaluateSpecificCriteria(variantName, patientData) {
+    let bonus = 0;
+    
+    // ПРОВЕРКА ГЕНОТИПА ДЛЯ ГЕПАТИТА
+    if (variantName.toLowerCase().includes('гепатит') || variantName.toLowerCase().includes('hcv')) {
+        const patientGenotype = findGenotypeInPatientData(patientData);
+        const variantGenotype = getGenotypeFromVariantName(variantName);
+        
+        if (patientGenotype && variantGenotype) {
+            if (patientGenotype === variantGenotype) {
+                bonus += 25; // Большой бонус за точное совпадение генотипа
+                console.log(`✅ Совпадение генотипа: ${patientGenotype} = ${variantGenotype} (+25)`);
+            } else {
+                bonus -= 40; // Большой штраф за несовпадение
+                console.log(`❌ Несовпадение генотипа: ${patientGenotype} ≠ ${variantGenotype} (-40)`);
+            }
+        }
+    }
+    
+    // ПРОВЕРКА ВЫРАЖЕННОСТИ ДЛЯ МИГРЕНИ
+    if (variantName.toLowerCase().includes('мигрень')) {
+        const patientSeverity = patientData["Приступ мигрени"] || patientData["Выраженность"];
+        const variantSeverity = getSeverityFromVariantName(variantName);
+        
+        if (patientSeverity && variantSeverity) {
+            if (patientSeverity.toLowerCase().includes(variantSeverity)) {
+                bonus += 20;
+                console.log(`✅ Совпадение выраженности мигрени: ${patientSeverity} (+20)`);
+            }
+        }
+    }
+    
+    return bonus;
+}
+
 function extract_rehabilitation_treatment(rehab_data) {
     const treatments = [];
     if (!rehab_data || typeof rehab_data !== 'object') return treatments;
@@ -1268,147 +2653,127 @@ function checkGenotypeMatch(recommendation, patientData) {
 }
 
 function getDetailedAnalysis() {
-    if (!window.recommendations_by_diagnosis) {
+    // Если нет структурированных рекомендаций, используем последнее объяснение
+    if (!window.recommendations_by_diagnosis || Object.keys(window.recommendations_by_diagnosis).length === 0) {
+        if (window.lastExplanation) {
+            return window.lastExplanation + "\n\n---\n*Детальный вид недоступен - данные не структурированы*";
+        }
         return "❌ Детальный анализ не доступен. Сначала выполните анализ.";
     }
     
     const result = [];
-    result.push("📊 **ПОЛНЫЙ ДЕТАЛЬНЫЙ АНАЛИЗ ВСЕХ ВАРИАНТОВ**");
+    result.push("📊 **ДЕТАЛЬНЫЙ АНАЛИЗ ВАРИАНТОВ**");
     result.push("");
     
-    // Добавляем информацию о пациенте
+    // Информация о пациенте
     result.push("👤 **ДАННЫЕ ПАЦИЕНТА**");
-    result.push(`   Диагнозы: ${window.patientDiagnoses ? window.patientDiagnoses.join(', ') : 'не определены'}`);
-    
-    // Получаем данные пациента для отображения возраста и пола
-    const patient_data = window.extract_patient_data ? window.extract_patient_data() : {};
-    if (patient_data["Возраст"]) result.push(`   Возраст: ${patient_data["Возраст"]} лет`);
-    if (patient_data["Пол"]) result.push(`   Пол: ${patient_data["Пол"]}`);
-    
-    // Получаем генотип правильно (только если реально есть)
-    const patientGenotype = findGenotypeInPatientData(patient_data);
-    
-    if (patientGenotype) {
-        result.push(`   Генотип HCV: ${patientGenotype}`);
-    } else {
-        result.push(`   Генотип HCV: ❌ не указан (рекомендуется определить)`);
+    if (window.patientDiagnoses && window.patientDiagnoses.length > 0) {
+        result.push(`• Диагнозы: ${window.patientDiagnoses.join(', ')}`);
     }
+    
+    const patientData = window.extract_patient_data?.() || {};
+    if (patientData["Возраст"]) result.push(`• Возраст: ${patientData["Возраст"]} лет`);
+    if (patientData["Пол"]) result.push(`• Пол: ${patientData["Пол"]}`);
+    
+    if (patientData["Частота сердечных сокращений"]) {
+        result.push(`• ЧСС: ${patientData["Частота сердечных сокращений"]} уд/мин`);
+    }
+    
+    // Показываем только релевантные данные
+    const relevantFields = ["Вес", "Рост", "Температура тела", "Артериальное давление"];
+    relevantFields.forEach(field => {
+        if (patientData[field]) {
+            result.push(`• ${field}: ${patientData[field]}`);
+        }
+    });
+    
+    if (window.patientDiagnoses && window.patientDiagnoses.some(d => 
+    d.toLowerCase().includes('гепатит') || d.toLowerCase().includes('hcv'))) {
+    const genotype = findGenotypeInPatientData(patientData);
+    if (genotype) {
+        result.push(`• Генотип HCV: ${genotype}`);
+    } else {
+        result.push(`• Генотип HCV: не указан (необходимо определить для лечения)`);
+    }
+}
+    
     result.push("");
     
-    // Добавляем детальный анализ всех вариантов
+    // Детальные рекомендации по диагнозам
     for (const [diagnosis, recs] of Object.entries(window.recommendations_by_diagnosis)) {
-        result.push(`\n🔍 **${diagnosis.toUpperCase()}:**`);
+        result.push(`🔍 **${diagnosis.toUpperCase()}:**`);
         result.push("");
         
         recs.forEach((rec, idx) => {
-            const match_percent = Math.round(rec.match_score);
+            const confidence = translateScore(rec.match_score);
+            result.push(`${idx + 1}. **${rec.variant_name}**`);
+            result.push(`   • Совпадение: ${confidence} (${Math.round(rec.match_score)}%)`);
             
-            // Проверяем соответствие генотипу с ПРАВИЛЬНЫМИ данными
-            const genotypeMatch = checkGenotypeMatch(rec, patient_data);
-            
-            let status_icon = "🟡";
-            let status_text = "";
-            
-            // Определяем статус на основе совпадения и генотипа
-            if (!genotypeMatch && patientGenotype) {
-                status_icon = "🚫";
-                status_text = "Генотип не соответствует";
-            } else if (!patientGenotype && rec.variant_name && 
-                      (rec.variant_name.toLowerCase().includes('генотип') || 
-                       rec.variant_name.includes('1a') || rec.variant_name.includes('1b'))) {
-                status_icon = "⚠️";
-                status_text = "Требуется указать генотип";
-            } else if (match_percent >= 90) {
-                status_icon = "🎯";
-                status_text = "Высокое совпадение";
-            } else if (match_percent >= 70) {
-                status_icon = "✅";
-                status_text = "Хорошее совпадение";
-            } else if (match_percent <= 30) {
-                status_icon = "🔴";
-                status_text = "Низкое совпадение";
+            // Критерии пациента из базы знаний
+            if (rec.explanations && rec.explanations.length > 0) {
+                result.push(`   • Критерии пациента:`);
+                rec.explanations.forEach(exp => {
+                    // Убираем эмодзи для чистого отображения
+                    const cleanExp = exp.replace(/[✅❌⚠️]/g, '').trim();
+                    if (cleanExp) result.push(`     - ${cleanExp}`);
+                });
             }
             
-            result.push(`${status_icon} **${rec.variant_name}**`);
-            result.push(`   • Совпадение: ${match_percent}%`);
-            
-            if (!genotypeMatch && patientGenotype) {
-                result.push(`   • ❌ **Не подходит:** генотип не соответствует`);
-                result.push(`     (вариант для ${getGenotypeFromVariantName(rec.variant_name)}, у пациента: ${patientGenotype})`);
-            } else if (!patientGenotype && rec.variant_name && 
-                      (rec.variant_name.toLowerCase().includes('генотип') || 
-                       rec.variant_name.includes('1a') || rec.variant_name.includes('1b'))) {
-                result.push(`   • ⚠️ **Требуется:** указать генотип пациента`);
-                result.push(`     (вариант для ${getGenotypeFromVariantName(rec.variant_name)})`);
-            } else {
-                result.push(`   • ✓ **Подходит:** соответствует критериям`);
+            // Лечение - ИСПРАВЛЕННАЯ ЧАСТЬ
+            if (rec.treatments && rec.treatments.length > 0) {
+                result.push(`   • Рекомендуемое лечение:`);
                 
-                if (rec.treatments && rec.treatments.length > 0) {
-                    result.push(`   • 💊 **Лечение:**`);
-                    rec.treatments.forEach((treatment, tIdx) => {
-                        if (tIdx < 3) { // Показываем только первые 3 лечения
-                            if (treatment.type === 'combination' && treatment.drugs) {
-                                result.push(`     - ${treatment.drugs.join(' + ')}`);
-                            } else if (treatment.type === 'medication') {
-                                result.push(`     - ${treatment.text}`);
-                            } else if (treatment.type === 'goal') {
-                                result.push(`     - 🎯 ${treatment.text}`);
-                            } else if (treatment.type === 'surgical') {
-                                result.push(`     - 🔪 ${treatment.text}`);
-                            } else if (treatment.type === 'rehabilitation') {
-                                result.push(`     - 🏃 ${treatment.text}`);
-                            }
+                // Счетчик для нумерации пунктов лечения
+                let treatmentCounter = 1;
+                
+                rec.treatments.forEach((treatment) => {
+                    if (typeof treatment === 'string') {
+                        // Убираем маркдаун для чистого отображения
+                        const cleanTreatment = treatment.replace(/\*\*/g, '').trim();
+                        result.push(`     ${treatmentCounter}. ${cleanTreatment}`);
+                        treatmentCounter++;
+                    } else if (treatment.text) {
+                        // Для объектов с полем text
+                        const cleanTreatment = treatment.text.replace(/\*\*/g, '').trim();
+                        result.push(`     ${treatmentCounter}. ${cleanTreatment}`);
+                        
+                        // Добавляем детали, если они есть
+                        if (treatment.details && treatment.details.length > 0) {
+                            treatment.details.forEach(detail => {
+                                if (detail && typeof detail === 'string' && detail !== treatment.text) {
+                                    const cleanDetail = detail.replace(/\*\*/g, '').trim();
+                                    result.push(`       • ${cleanDetail}`);
+                                }
+                            });
                         }
-                    });
-                    if (rec.treatments.length > 3) {
-                        result.push(`     - ... и еще ${rec.treatments.length - 3} методов`);
+                        treatmentCounter++;
                     }
-                }
+                });
+            } else {
+                result.push(`   • Лечение: информация о лечении не извлечена из базы знаний`);
             }
             
             if (rec.critical_mismatch) {
                 result.push(`   • ⚠️ Критическое несоответствие критериям`);
             }
             
-            if (rec.has_contradictions) {
-                result.push(`   • ⚠️ Требуется уточнение данных`);
-            }
-            
             result.push(""); // Пустая строка между вариантами
         });
     }
     
-    // Добавляем итоговую рекомендацию с учетом генотипа
-    result.push("\n🎯 **ИТОГОВАЯ РЕКОМЕНДАЦИЯ:**");
+    // Дополнительная информация
+    result.push("📋 **ИНФОРМАЦИЯ ДЛЯ ВРАЧА:**");
+    result.push("1. Проверить противопоказания к рекомендованным препаратам");
+    result.push("2. Учесть сопутствующие заболевания пациента");
+    result.push("3. Определить индивидуальные дозировки");
+    result.push("4. Назначить контроль эффективности лечения");
+    result.push("5. Рассмотреть немедикаментозные методы лечения");
     
-    if (patientGenotype) {
-        result.push(`   • У пациента определен генотип: **${patientGenotype}**`);
-        
-        // Находим лучшую рекомендацию для этого генотипа
-        const bestRecommendation = findBestRecommendationForGenotype(window.recommendations_by_diagnosis, patientGenotype);
-        
-        if (bestRecommendation) {
-            result.push(`   • **Рекомендуемый вариант:** ${bestRecommendation.variant_name}`);
-            result.push(`   • **Процент совпадения:** ${Math.round(bestRecommendation.match_score)}%`);
-            
-            if (bestRecommendation.treatments && bestRecommendation.treatments.length > 0) {
-                const mainTreatment = bestRecommendation.treatments[0];
-                if (mainTreatment.type === 'combination' && mainTreatment.drugs) {
-                    result.push(`   • **Препараты:** ${mainTreatment.drugs.join(' + ')}`);
-                }
-            }
-        } else {
-            result.push(`   • Для генотипа ${patientGenotype} подходящих рекомендаций не найдено`);
-        }
-    } else {
-        result.push(`   • ⚠️ **Генотип не указан**`);
-        result.push(`   • **Рекомендуется уточнить генотип** для точного выбора лечения`);
-        result.push(`   • Показаны только общие рекомендации, не требующие указания генотипа`);
-    }
+    result.push("---");
+    result.push("*Для возврата к краткому виду нажмите 'Скрыть детали'*");
     
     return result.join("\n");
 }
-
 // Вспомогательная функция для извлечения генотипа из названия варианта
 function getGenotypeFromVariantName(variantName) {
     const name = variantName.toLowerCase();
@@ -1419,7 +2784,15 @@ function getGenotypeFromVariantName(variantName) {
     if (name.includes('4')) return '4';
     if (name.includes('5')) return '5';
     if (name.includes('6')) return '6';
-    return 'не указан';
+    return null;
+}
+
+function getSeverityFromVariantName(variantName) {
+    const name = variantName.toLowerCase();
+    if (name.includes('легк')) return 'легк';
+    if (name.includes('средн')) return 'средн';
+    if (name.includes('тяжел')) return 'тяжел';
+    return null;
 }
 
 // Функция для поиска лучшей рекомендации по генотипу
@@ -1450,35 +2823,53 @@ function toggleDetailedView() {
     const analysisResultsDiv = document.getElementById('analysisResults');
     if (!analysisResultsDiv) return;
     
-    const currentContent = analysisResultsDiv.innerHTML;
+    const detailedExplanation = getDetailedAnalysis();
     
-    // Если видим кнопку "Показать детали", переключаемся на детальный режим
-    if (currentContent.includes('Показать детали')) {
-        const detailedExplanation = getDetailedAnalysis();
-        const htmlExplanation = detailedExplanation
-            .replace(/\n/g, '<br>')
-            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-            .replace(/✅/g, '<span style="color: green;">✅</span>')
-            .replace(/🚫/g, '<span style="color: red;">🚫</span>')
-            .replace(/⚠️/g, '<span style="color: orange;">⚠️</span>')
-            .replace(/🔍/g, '<span style="color: blue;">🔍</span>')
-            .replace(/🎯/g, '<span style="color: gold;">🎯</span>')
-            .replace(/🔴/g, '<span style="color: red;">🔴</span>')
-            .replace(/🟡/g, '<span style="color: orange;">🟡</span>')
-            .replace(/✓/g, '<span style="color: green;">✓</span>')
-            .replace(/❌/g, '<span style="color: red;">❌</span>');
-        
-        analysisResultsDiv.innerHTML = `
-            <div class="analysis-result detailed-view">
-                <div style="background: #f0f8ff; padding: 20px; border-radius: 6px; margin-bottom: 15px; 
-                           border-left: 4px solid #2196F3; font-family: Arial, sans-serif; line-height: 1.5;">
-                    ${htmlExplanation}
-                </div>
-                <button onclick="toggleBriefView()" class="toggle-btn" style="background-color: #45a049;">
-                    Скрыть детали
+    // Преобразуем разметку в HTML
+    const htmlExplanation = detailedExplanation
+        .replace(/\n/g, '<br>')
+        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+        .replace(/🔍/g, '<span style="color: #3498db;">🔍</span>')
+        .replace(/👤/g, '<span style="color: #9b59b6;">👤</span>')
+        .replace(/⚠️/g, '<span style="color: #f39c12;">⚠️</span>');
+    
+    analysisResultsDiv.innerHTML = `
+        <div class="analysis-result detailed-view">
+            <div style="
+                background: white;
+                padding: 25px;
+                border-radius: 10px;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                margin-bottom: 20px;
+                border-left: 4px solid #3498db;
+            ">
+                ${htmlExplanation}
+            </div>
+            
+            <div style="text-align: center;">
+                <button onclick="toggleBriefView()" class="toggle-btn" 
+                    style="
+                        background-color: #45a049;
+                        color: white;
+                        border: none;
+                        padding: 10px 20px;
+                        border-radius: 5px;
+                        cursor: pointer;
+                        font-size: 14px;
+                    ">
+                    📋 Вернуться к краткому виду
                 </button>
             </div>
-        `;
+        </div>
+    `;
+}
+
+function toggleBriefView() {
+    // Вызываем исходный анализ для краткого вида
+    if (window.lastExplanation && window.lastPatientData) {
+        showAnalysisResults(window.lastExplanation, window.lastPatientData);
+    } else {
+        window.analyzeData();
     }
 }
 
@@ -1497,31 +2888,89 @@ function showAnalysisResults(explanation, patientData) {
         return;
     }
     
+    // Преобразуем разметку в HTML
     const htmlExplanation = explanation
         .replace(/\n/g, '<br>')
         .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-        .replace(/✅/g, '<span style="color: green;">✅</span>')
-        .replace(/❌/g, '<span style="color: red;">❌</span>')
-        .replace(/⚠️/g, '<span style="color: orange;">⚠️</span>')
-        .replace(/🔍/g, '<span style="color: blue;">🔍</span>')
-        .replace(/💡/g, '💡 ')
-        .replace(/🏥/g, '🏥 ')
-        .replace(/🧬/g, '🧬 ');
+        .replace(/🎯/g, '<span style="color: #e74c3c; font-size: 1.2em;">🎯</span>')
+        .replace(/💊/g, '<span style="color: #27ae60; font-size: 1.2em;">💊</span>')
+        .replace(/📋/g, '<span style="color: #3498db; font-size: 1.2em;">📋</span>')
+        .replace(/✅/g, '<span style="color: #27ae60;">✅</span>')
+        .replace(/⚠️/g, '<span style="color: #f39c12;">⚠️</span>')
+        .replace(/❌/g, '<span style="color: #e74c3c;">❌</span>')
+        .replace(/\•/g, '•');
     
     analysisResultsDiv.innerHTML = `
-        <div class="analysis-result">
-            <div style="background: #f8f9fa; padding: 20px; border-radius: 6px; margin-bottom: 15px; 
-                       border-left: 4px solid #28a745; font-family: Arial, sans-serif; line-height: 1.5;">
-                ${htmlExplanation}
+        <div class="analysis-result" style="font-family: Arial, sans-serif; line-height: 1.6;">
+            <div style="
+                background: white;
+                padding: 25px;
+                border-radius: 10px;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                margin-bottom: 20px;
+            ">
+                <div style="
+                    border-left: 4px solid #e74c3c;
+                    padding-left: 15px;
+                    margin-bottom: 20px;
+                ">
+                    ${htmlExplanation}
+                </div>
+                
+                <div style="text-align: center; margin-top: 20px;">
+                    <button onclick="toggleDetailedView()" class="toggle-btn" 
+                        style="
+                            background-color: #3498db;
+                            color: white;
+                            border: none;
+                            padding: 10px 20px;
+                            border-radius: 5px;
+                            cursor: pointer;
+                            font-size: 14px;
+                            margin-right: 10px;
+                        ">
+                        📊 Показать детали анализа
+                    </button>
+                    
+                    <button onclick="saveAllData()" class="save-btn"
+                        style="
+                            background-color: #27ae60;
+                            color: white;
+                            border: none;
+                            padding: 10px 20px;
+                            border-radius: 5px;
+                            cursor: pointer;
+                            font-size: 14px;
+                        ">
+                        💾 Сохранить историю
+                    </button>
+                </div>
             </div>
-            <button onclick="toggleDetailedView()" class="toggle-btn">
-                Показать детали
-            </button>
-            <details style="margin-top: 15px;">
-                <summary style="cursor: pointer; color: #666;">📊 Исходные данные для анализа</summary>
+            
+            <details style="
+                background: #f8f9fa;
+                padding: 15px;
+                border-radius: 5px;
+                margin-top: 15px;
+                border: 1px solid #ddd;
+            ">
+                <summary style="
+                    cursor: pointer;
+                    color: #666;
+                    font-weight: bold;
+                ">📄 Исходные данные пациента (для проверки)</summary>
                 <div style="margin-top: 10px;">
-                    <pre style="white-space: pre-wrap; background: #f8f9fa; padding: 10px; border-radius: 4px; 
-                               margin-top: 10px; max-height: 200px; overflow-y: auto; font-size: 12px;">
+                    <pre style="
+                        white-space: pre-wrap;
+                        background: #fff;
+                        padding: 15px;
+                        border-radius: 4px;
+                        margin-top: 10px;
+                        max-height: 200px;
+                        overflow-y: auto;
+                        font-size: 12px;
+                        border: 1px solid #eee;
+                    ">
 ${JSON.stringify(patientData, null, 2)}
                     </pre>
                 </div>
@@ -1531,6 +2980,272 @@ ${JSON.stringify(patientData, null, 2)}
     
     resultsDiv.style.display = 'block';
     resultsDiv.scrollIntoView({ behavior: 'smooth' });
+}
+
+// Функция для перевода score в понятный текст
+function translateScore(score) {
+    if (score >= 90) return "✅ Отлично подходит";
+    if (score >= 75) return "✅ Хорошо подходит";
+    if (score >= 60) return "⚠️ Частично подходит (требует уточнения)";
+    if (score >= 40) return "⚠️ Ограниченно подходит";
+    return "❌ Не подходит";
+}
+
+// Функция для извлечения текста лечения
+function extractTreatmentText(recommendation) {
+    if (!recommendation.treatments || recommendation.treatments.length === 0) {
+        return "Лечение не указано";
+    }
+    
+    const treatment = recommendation.treatments.find(t => 
+        t.type === 'combination' || t.type === 'medication'
+    ) || recommendation.treatments[0];
+    
+    if (treatment.type === 'combination' && treatment.drugs) {
+        return treatment.drugs.join(' + ');
+    }
+    
+    return treatment.text || "Лечение не указано";
+}
+
+// Функция для поиска генотипа (улучшенная)
+function findGenotypeInPatientData(patientData) {
+    if (!patientData) return null;
+    
+    // Ищем в разных полях
+    const possibleFields = [
+        'Анализ крови на гепатит С с определением генотипа_Результат',
+        'Генотип',
+        'Генотип вируса',
+        'Генотип HCV',
+        'Генотип гепатита С',
+        'Результат'
+    ];
+    
+    for (const field of possibleFields) {
+        if (patientData[field]) {
+            let value = patientData[field];
+            
+            // Если массив - берем первый элемент
+            if (Array.isArray(value)) {
+                value = value[0];
+            }
+            
+            // Преобразуем в строку и проверяем на генотип
+            const strValue = String(value).trim().toLowerCase();
+            
+            if (strValue.includes('1a') || strValue === '1a') return '1a';
+            if (strValue.includes('1b') || strValue === '1b') return '1b';
+            if (strValue.includes('2') || strValue === '2') return '2';
+            if (strValue.includes('3') || strValue === '3') return '3';
+            if (strValue.includes('4') || strValue === '4') return '4';
+            if (strValue === '1') return '1'; // Общий для 1
+        }
+    }
+    
+    return null;
+}
+
+function extractPatientDiagnosis(patientData) {
+    if (!patientData) return null;
+    
+    // Пробуем разные возможные поля
+    const possibleFields = [
+        "Клинический диагноз",
+        "Диагноз", 
+        "Основной диагноз",
+        "Сопутствующий диагноз"
+    ];
+    
+    for (const field of possibleFields) {
+        if (patientData[field]) {
+            const value = patientData[field];
+            
+            // Приводим к строке
+            let diagnosisStr = "";
+            if (Array.isArray(value)) {
+                diagnosisStr = value[0]; // Берем первый диагноз
+            } else {
+                diagnosisStr = String(value);
+            }
+            
+            // Убираем лишние пробелы
+            diagnosisStr = diagnosisStr.trim();
+            
+            // Приводим к стандартному виду для поиска в базе знаний
+            return normalizeDiagnosis(diagnosisStr);
+        }
+    }
+    
+    return null;
+}
+
+// Новая функция для нормализации диагноза
+function normalizeDiagnosis(diagnosis) {
+    if (!diagnosis) return null;
+    
+    const lowerDiagnosis = diagnosis.toLowerCase().trim();
+    
+    // Маппинг различных написаний
+    const diagnosisMapping = {
+        'стабильная ибс': 'Стабильная ИБС',
+        'ибс': 'Стабильная ИБС', 
+        'ишемическая болезнь сердца': 'Стабильная ИБС',
+        'мигрень': 'Мигрень',
+        'хронический вирусный гепатит c': 'Хронический вирусный гепатит C',
+        'хвгс': 'Хронический вирусный гепатит C',
+        'артериальная гипертензия': 'Артериальная гипертензия',
+        'аг': 'Артериальная гипертензия',
+        'переломы лодыжек': 'Переломы лодыжек',
+        'перелом лодыжки': 'Переломы лодыжек',
+        'повреждение связок коленного сустава': 'Повреждение связок коленного сустава',
+        'переломы ключицы и лопатки': 'Переломы ключицы и лопатки',
+        'переломы проксимального отдела бедренной кости': 'Переломы проксимального отдела бедренной кости',
+        'переломы проксимального отдела костей голени': 'Переломы проксимального отдела костей голени',
+        'повреждения тазового кольца': 'Повреждения тазового кольца',
+        'переломы надколенника': 'Переломы надколенника',
+        'вывих шейного позвонка': 'Вывих шейного позвонка'
+    };
+    
+    // Ищем точное соответствие
+    for (const [key, value] of Object.entries(diagnosisMapping)) {
+        if (lowerDiagnosis.includes(key) || key.includes(lowerDiagnosis)) {
+            return value;
+        }
+    }
+    
+    // Если не нашли в маппинге, пытаемся найти в базе знаний
+    return capitalizeFirstLetter(diagnosis);
+}
+
+// Вспомогательная функция
+function capitalizeFirstLetter(str) {
+    return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
+}
+
+function extractImprovedGoals(treatmentPlan) {
+    const goals = [];
+    
+    if (!treatmentPlan || !treatmentPlan["Цель"]) {
+        return goals;
+    }
+    
+    const goalData = treatmentPlan["Цель"];
+    
+    for (const [goalKey, goalValue] of Object.entries(goalData)) {
+        if (!goalValue || typeof goalValue !== 'object') continue;
+        
+        for (const [action, actionData] of Object.entries(goalValue)) {
+            if (typeof actionData === 'object') {
+                // Пример: "снизить": {"Наблюдение": {"Частота сердечных сокращений": {...}}}
+                for (const [subAction, subData] of Object.entries(actionData)) {
+                    if (subAction === "Наблюдение" && typeof subData === 'object') {
+                        for (const [observationName, observationData] of Object.entries(subData)) {
+                            let goalText = `${action} ${observationName.toLowerCase()}`;
+                            
+                            if (observationData && typeof observationData === 'object') {
+                                if (observationData["Числовое значение"]) {
+                                    const numData = observationData["Числовое значение"];
+                                    if (numData["нижняя граница"] && numData["верхняя граница"]) {
+                                        goalText += ` до ${numData["нижняя граница"]}-${numData["верхняя граница"]} ${numData["единица измерения"] || ''}`;
+                                    } else if (numData["нижняя граница"]) {
+                                        goalText += ` до ${numData["нижняя граница"]} ${numData["единица измерения"] || ''}`;
+                                    }
+                                }
+                            }
+                            
+                            goals.push(goalText);
+                        }
+                    } else if (typeof subData === 'string') {
+                        goals.push(`${action} ${subAction} ${subData}`);
+                    }
+                }
+            } else if (typeof actionData === 'string') {
+                goals.push(`${action} ${actionData}`);
+            }
+        }
+    }
+    
+    return goals;
+}
+
+function checkPatientCategory(patientCategory, patientData) {
+    console.log("🔍 Проверка категории пациента:", patientCategory);
+    console.log("📋 Данные пациента:", patientData);
+    
+    const result = {
+        matches: true,
+        details: [],
+        missing: []
+    };
+
+    if (!patientCategory) {
+        console.log("✅ Категория не указана - считаем подходящей");
+        return result;
+    }
+
+    // Проверяем Наблюдения
+    if (patientCategory["Наблюдение"]) {
+        const observations = patientCategory["Наблюдение"];
+        console.log("🔍 Наблюдения в категории:", observations);
+        
+        if (Array.isArray(observations)) {
+            observations.forEach(obs => {
+                for (const [obsName, obsValue] of Object.entries(obs)) {
+                    console.log(`🔍 Проверяем наблюдение: "${obsName}" =`, obsValue);
+                    
+                    // Проверяем соответствие выраженности мигрени
+                    if (obsName === "Приступ мигрени" && obsValue["Качественное значение"]) {
+                        const allowedSeverities = Object.keys(obsValue["Качественное значение"]);
+                        console.log(`📋 Допустимые степени тяжести:`, allowedSeverities);
+                        
+                        // Ищем выраженность в данных пациента
+                        let patientSeverity = null;
+                        
+                        // Пробуем разные поля
+                        if (patientData["Выраженность"]) {
+                            patientSeverity = patientData["Выраженность"];
+                        } else if (patientData["Приступ мигрени"]) {
+                            patientSeverity = patientData["Приступ мигрени"];
+                        } else if (patientData["Головная боль"]) {
+                            patientSeverity = patientData["Головная боль"];
+                        }
+                        
+                        console.log(`📋 Выраженность у пациента: "${patientSeverity}"`);
+                        
+                        if (patientSeverity) {
+                            const patientSeverityLower = patientSeverity.toLowerCase();
+                            const hasMatchingSeverity = allowedSeverities.some(severity => {
+                                const severityLower = severity.toLowerCase();
+                                return severityLower.includes(patientSeverityLower) || 
+                                       patientSeverityLower.includes(severityLower) ||
+                                       (severityLower.includes('легк') && patientSeverityLower.includes('легк')) ||
+                                       (severityLower.includes('средн') && patientSeverityLower.includes('средн')) ||
+                                       (severityLower.includes('тяжел') && patientSeverityLower.includes('тяжел'));
+                            });
+                            
+                            if (hasMatchingSeverity) {
+                                result.details.push(`✅ Приступ мигрени: ${patientSeverity} соответствует`);
+                                console.log(`✅ Выраженность совпадает`);
+                            } else {
+                                result.matches = false;
+                                const errorMsg = `Приступ мигрени: "${patientSeverity}" не соответствует критериям (требуется: ${allowedSeverities.join(", ")})`;
+                                result.missing.push(errorMsg);
+                                console.log(`❌ ${errorMsg}`);
+                            }
+                        } else {
+                            // Если выраженность не указана, но наблюдение есть
+                            result.details.push(`✅ Приступ мигрени: наблюдение учтено`);
+                            console.log(`✅ Приступ мигрени учтен (без указания выраженности)`);
+                        }
+                    }
+                }
+            });
+        }
+    }
+
+    console.log(`📊 Результат проверки: matches=${result.matches}, missing=${result.missing.length}`);
+    return result;
 }
 
 function showErrorResults(error) {
@@ -1551,5 +3266,66 @@ function showErrorResults(error) {
         resultsDiv.style.display = 'block';
     }
 }
+
+// ТЕСТОВАЯ ФУНКЦИЯ - можно вызвать из консоли
+window.testSolver = function() {
+    console.log("=== ТЕСТ РЕШАТЕЛЯ ===");
+    
+    // Тестовые данные
+    const testData = {
+        "Клинический диагноз": "Хронический вирусный гепатит C",
+        "Возраст": 45,
+        "Анализ крови на гепатит С с определением генотипа_Результат": ["1b"],
+        "Опыт терапии_Опыт терапии_ПВТ (противовирусной терапии)": ["отсутствует"]
+    };
+    
+    console.log("Тестовые данные:", testData);
+    
+    // Проверяем extractPatientValue
+    console.log("\n🔍 Проверка extractPatientValue:");
+    console.log("Цирроз печени:", extractPatientValue("Цирроз печени", testData));
+    console.log("Трансплантация печени:", extractPatientValue("Трансплантация печени", testData));
+    console.log("Генотип:", extractPatientValue("Генотип", testData));
+    console.log("ПВТ:", extractPatientValue("ПВТ", testData));
+    
+    return "Тест завершен";
+};
+
+window.testKnowledgeBase = function() {
+    if (!window.knowledgeBase) {
+        console.log("❌ База знаний не загружена");
+        return;
+    }
+    
+    console.log("=== ПРОВЕРКА БАЗЫ ЗНАНИЙ ===");
+    console.log("Структура базы знаний:");
+    
+    const klinrek = window.knowledgeBase["КлинРек II ур"];
+    if (!klinrek) {
+        console.log("❌ Нет раздела 'КлинРек II ур'");
+        return;
+    }
+    
+    const diseases = klinrek["Заболевание"];
+    if (!diseases) {
+        console.log("❌ Нет раздела 'Заболевание'");
+        return;
+    }
+    
+    console.log("Доступные диагнозы:");
+    for (const disease in diseases) {
+        console.log(`- ${disease}`);
+        
+        if (disease === "Хронический вирусный гепатит C") {
+            console.log("  Варианты течения:");
+            const variants = diseases[disease]["Вариант течения (функциональный класс)"];
+            for (const variant in variants) {
+                console.log(`  * ${variant}`);
+            }
+        }
+    }
+    
+    return "Проверка завершена";
+};
 
 window.analyzeData = analyzeData;
