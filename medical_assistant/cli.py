@@ -1,4 +1,3 @@
-# medical_assistant/cli.py - ИСПРАВЛЕННАЯ ВЕРСИЯ
 #!/usr/bin/env python3
 import argparse
 import sys
@@ -39,6 +38,7 @@ def main():
     parser.add_argument('--model', default='mistral', help='Модель Ollama для использования')
     parser.add_argument('--data-dir', default='ИБ', help='Путь к папке с данными пациента')
     parser.add_argument('--json-file', help='Путь к JSON файлу пациента (будет скопирован в папку данных)')
+    parser.add_argument('--diagnosis', help='Прямое указание диагноза для тестирования')
     parser.add_argument('--interactive', action='store_true', help='Интерактивный режим')
 
     args = parser.parse_args()
@@ -55,13 +55,38 @@ def main():
 
         print("[ИНИЦИАЛИЗАЦИЯ] Медицинского ассистента...")
         assistant = MedicalAssistant(model=args.model)
-        assistant.initialize_system(data_path=args.data_dir)
+        
+        # Если указан диагноз для тестирования, создаем тестовые данные
+        if args.diagnosis:
+            print(f"[ТЕСТ] Используем тестовый диагноз: {args.diagnosis}")
+            assistant.patient_data = {
+                "Клинический диагноз": {
+                    "Тип": "Выбор",
+                    "Значение": args.diagnosis
+                },
+                "Возраст": {
+                    "Тип": "Числовое",
+                    "Значение": "35"
+                }
+            }
+        else:
+            assistant.initialize_system(data_path=args.data_dir)
+
+        if not assistant.patient_data:
+            print("[ОШИБКА] Не удалось загрузить данные пациента")
+            sys.exit(1)
 
         print("[АНАЛИЗ] Получение рекомендации по лечению...")
 
         # Используем прямое обращение к ollama_chat вместо get_treatment_recommendation
         system_message = assistant.get_system_message_by_diagnosis(assistant.patient_data)
         clinical_diagnosis = assistant.patient_data.get("Клинический диагноз", {}).get("Значение", "не указан")
+        
+        # Если есть данные пациента, загружаем соответствующие параграфы
+        if not args.diagnosis:
+            assistant.vault_content = assistant.load_relevant_paragraphs(assistant.patient_data)
+            assistant.vault_embeddings_tensor = assistant.generate_embeddings(assistant.vault_content)
+        
         user_input = f"Назначьте лечение для пациента с диагнозом: {clinical_diagnosis}"
 
         recommendation = assistant.ollama_chat(

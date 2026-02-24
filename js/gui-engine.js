@@ -1856,3 +1856,803 @@ style.textContent = `
     }
 `;
 document.head.appendChild(style);
+
+// AI РЕКОМЕНДАЦИИ
+document.addEventListener('DOMContentLoaded', function() {
+    const aiButton = document.getElementById('aiRecommendationsButton');
+    const aiLoading = document.getElementById('aiLoading');
+    
+    if (aiButton) {
+        console.log('✅ AI кнопка найдена');
+        
+        aiButton.addEventListener('click', async function() {
+            console.log('🟢 AI кнопка нажата!');
+            
+            try {
+                // Показать индикатор загрузки
+                if (aiLoading) {
+                    aiLoading.style.display = 'block';
+                }
+                aiButton.disabled = true;
+                aiButton.textContent = '🤖 Запрос к AI...';
+                
+                // Получаем данные пациента
+                const patientData = window.extract_patient_data ? window.extract_patient_data() : {};
+                console.log('📊 Данные пациента для AI:', patientData);
+                
+                // Если нет данных, используем тестовые
+                let diagnosis = "Неизвестный диагноз";
+                let dataToSend = {};
+                
+                if (Object.keys(patientData).length > 0) {
+                    // Получаем диагноз
+                    diagnosis = window.extractPatientDiagnosis ? 
+                        window.extractPatientDiagnosis(patientData) : 
+                        patientData["Клинический диагноз"] || 
+                        patientData["Диагноз"] || 
+                        patientData["Основной диагноз"] || 
+                        "Неизвестный диагноз";
+                    
+                    dataToSend = patientData;
+                } else {
+                    // Тестовые данные
+                    diagnosis = "Мигрень";
+                    dataToSend = {
+                        "Клинический диагноз": "Мигрень",
+                        "Возраст": "35",
+                        "Пол": "Женский",
+                        "Симптомы": "Головная боль, тошнота"
+                    };
+                    console.log('⚠️ Используем тестовые данные');
+                }
+                
+                console.log(`🤖 Отправляем AI запрос для диагноза: ${diagnosis}`);
+                
+                // Отправляем запрос к AI API
+                const response = await fetch('http://localhost:5001/api/get_recommendations', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        patient_data: dataToSend,
+                        diagnosis: diagnosis
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`Ошибка сервера: ${response.status} ${response.statusText}`);
+                }
+                
+                const result = await response.json();
+                console.log('🎉 AI ответ получен:', result);
+                
+                if (result.success) {
+                    // Показываем результат
+                    showAIResults(result.recommendation, dataToSend);
+                    window.showNotification('✅ AI-рекомендации получены!', 'success');
+                } else {
+                    throw new Error(result.error || 'Неизвестная ошибка AI');
+                }
+                
+            } catch (error) {
+                console.error('❌ Ошибка получения AI-рекомендаций:', error);
+                
+                // Показываем подробную ошибку
+                let errorMessage = `AI ошибка: ${error.message}`;
+                
+                if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+                    errorMessage = '❌ AI сервер не отвечает! Проверьте:\n1. Запущен ли Python сервер?\n2. Откройте http://localhost:5001/api/health';
+                }
+                
+                window.showNotification(errorMessage, 'error');
+                
+                // Показываем альтернативное сообщение
+                const patientData = window.extract_patient_data ? window.extract_patient_data() : {};
+                const diagnosis = window.extractPatientDiagnosis ? 
+                    window.extractPatientDiagnosis(patientData) : 
+                    "Неизвестный диагноз";
+                
+                showAIResults(getFallbackRecommendation(diagnosis), patientData);
+                
+            } finally {
+                // Скрываем индикатор загрузки
+                if (aiLoading) {
+                    aiLoading.style.display = 'none';
+                }
+                aiButton.disabled = false;
+                aiButton.textContent = '🤖 Получить AI-рекомендации';
+            }
+        });
+    } else {
+        console.error('❌ AI кнопка не найдена!');
+    }
+});
+
+// Функция для отображения AI результатов
+function showAIResults(aiText, patientData) {
+    const resultsDiv = document.getElementById('results');
+    const analysisResultsDiv = document.getElementById('analysisResults');
+    
+    if (!resultsDiv || !analysisResultsDiv) {
+        console.error('❌ Не найдены элементы для отображения результатов');
+        return;
+    }
+    
+    // Форматируем текст
+    const formattedText = formatAIText(aiText);
+    
+    // Создаем HTML
+    const htmlContent = `
+        <div class="analysis-result" style="font-family: Arial, sans-serif; line-height: 1.6;">
+            <div style="
+                background: white;
+                padding: 25px;
+                border-radius: 10px;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                margin-bottom: 20px;
+            ">
+                <div style="display: flex; align-items: center; margin-bottom: 20px;">
+                    <div style="font-size: 2em; margin-right: 15px;">🤖</div>
+                    <div>
+                        <h2 style="color: #3498db; margin: 0; padding: 0;">AI-рекомендации по лечению</h2>
+                        <p style="color: #666; margin: 5px 0 0 0;">Сгенерировано моделью mistral:7b</p>
+                    </div>
+                </div>
+                
+                <div style="
+                    background: #f8f9fa;
+                    padding: 15px;
+                    border-radius: 8px;
+                    margin-bottom: 20px;
+                    border-left: 4px solid #3498db;
+                ">
+                    ${formattedText}
+                </div>
+                
+                <div style="
+                    margin-top: 20px;
+                    padding: 15px;
+                    background: #fff;
+                    border: 1px solid #e9ecef;
+                    border-radius: 5px;
+                ">
+                    <h4 style="color: #2c3e50; margin-top: 0;">📊 Данные пациента для AI-анализа:</h4>
+                    <div style="
+                        max-height: 200px;
+                        overflow-y: auto;
+                        background: #f8f9fa;
+                        padding: 10px;
+                        border-radius: 4px;
+                        font-family: monospace;
+                        font-size: 12px;
+                    ">
+                        <pre style="margin: 0;">${JSON.stringify(patientData, null, 2)}</pre>
+                    </div>
+                </div>
+                
+                <div style="text-align: center; margin-top: 20px;">
+                    <button onclick="window.analyzeData()" style="
+                        background-color: #2ecc71;
+                        color: white;
+                        border: none;
+                        padding: 10px 20px;
+                        border-radius: 5px;
+                        cursor: pointer;
+                        font-size: 14px;
+                        margin-right: 10px;
+                    ">
+                        📊 Вернуться к структурированному анализу
+                    </button>
+                    
+                    <button onclick="location.reload()" style="
+                        background-color: #3498db;
+                        color: white;
+                        border: none;
+                        padding: 10px 20px;
+                        border-radius: 5px;
+                        cursor: pointer;
+                        font-size: 14px;
+                    ">
+                        🔄 Обновить рекомендации
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    analysisResultsDiv.innerHTML = htmlContent;
+    resultsDiv.style.display = 'block';
+    resultsDiv.scrollIntoView({ behavior: 'smooth' });
+}
+
+// Улучшенная функция форматирования AI текста
+function formatAIText(text) {
+    if (!text) return '<p>Нет рекомендаций</p>';
+    
+    console.log("📝 Исходный текст от AI:", text.substring(0, 200) + "...");
+    
+    // Функция для исправления регистра
+    const fixTextCase = (str) => {
+        // Разбиваем на предложения
+        return str
+            .replace(/([.!?])\s+/g, '$1|')
+            .split('|')
+            .map(sentence => {
+                if (!sentence.trim()) return sentence;
+                
+                // Ищем начало предложения (после точки, восклицательного или вопросительного знака)
+                let result = sentence.trim();
+                
+                // Если предложение начинается с буквы в верхнем регистре или содержит только заглавные
+                if (result.length > 0) {
+                    // Проверяем, не является ли это аббревиатурой или специальным термином
+                    const commonUpperTerms = ['ИБС', 'АПФ', 'БРА', 'мм рт.ст.', 'мг', 'сутки'];
+                    const hasCommonUpper = commonUpperTerms.some(term => 
+                        result.toUpperCase().includes(term.toUpperCase())
+                    );
+                    
+                    if (!hasCommonUpper) {
+                        // Преобразуем первую букву предложения в заглавную, остальные - в строчные
+                        result = result.charAt(0).toUpperCase() + result.slice(1).toLowerCase();
+                    }
+                }
+                
+                return result;
+            })
+            .join(' ');
+    };
+    
+    // Обрабатываем текст построчно
+    let lines = text.split('\n');
+    let processedLines = [];
+    
+    for (let i = 0; i < lines.length; i++) {
+        let line = lines[i];
+        
+        // Пропускаем пустые строки
+        if (line.trim() === '') {
+            processedLines.push(line);
+            continue;
+        }
+        
+        // 1. Обрабатываем заголовки (# ## ###)
+        if (line.match(/^#{1,3}\s+/)) {
+            const match = line.match(/^(#{1,3})\s+(.*)$/);
+            if (match) {
+                const hashes = match[1];
+                let content = match[2];
+                
+                // Преобразуем заголовок в нормальный регистр
+                content = content
+                    .split(' ')
+                    .map(word => {
+                        // Сохраняем аббревиатуры
+                        if (['ИБС', 'АПФ', 'БРА', 'ВИЧ', 'СПИД', 'COVID'].includes(word.toUpperCase())) {
+                            return word.toUpperCase();
+                        }
+                        // Сохраняем слова в кавычках
+                        if (word.startsWith('"') || word.startsWith("'") || word.startsWith('«')) {
+                            return word;
+                        }
+                        // Преобразуем обычные слова: первая буква заглавная, остальные строчные
+                        return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+                    })
+                    .join(' ');
+                
+                processedLines.push(`${hashes} ${content}`);
+                continue;
+            }
+        }
+        
+        // 2. Обрабатываем пункты списка (начинающиеся с •, -, цифры.)
+        if (line.match(/^[\s]*[•\-*\d]\.?\s+/)) {
+            // Находим начало пункта
+            const match = line.match(/^([\s]*[•\-*\d]\.?\s+)(.*)$/);
+            if (match) {
+                const prefix = match[1];
+                let content = match[2];
+                
+                // Преобразуем содержимое пункта
+                content = fixTextCase(content);
+                processedLines.push(`${prefix}${content}`);
+                continue;
+            }
+        }
+        
+        // 3. Обрабатываем обычный текст
+        // Проверяем, не является ли строка полностью в верхнем регистре
+        if (line === line.toUpperCase() && line.length > 10) {
+            // Проверяем, не содержит ли она медицинских аббревиатур
+            const medicalAbbr = ['ИБС', 'АПФ', 'БРА', 'ВИЧ', 'СПИД', 'ЭКГ', 'УЗИ', 'МРТ', 'КТ'];
+            const hasMedicalAbbr = medicalAbbr.some(abbr => 
+                line.toUpperCase().includes(abbr)
+            );
+            
+            if (!hasMedicalAbbr) {
+                line = fixTextCase(line);
+            }
+        } else {
+            // Для смешанного регистра тоже применяем исправление
+            line = fixTextCase(line);
+        }
+        
+        processedLines.push(line);
+    }
+    
+    const processedText = processedLines.join('\n');
+    console.log("📝 Обработанный текст:", processedText.substring(0, 200) + "...");
+    
+    // HTML форматирование
+    return processedText
+        .replace(/\n\n+/g, '</p><p>')
+        .replace(/\n/g, '<br>')
+        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*(.*?)\*/g, '<em>$1</em>')
+        .replace(/^### (.*$)/gim, (match, content) => {
+            return `<h3 style="color: #2c3e50; text-transform: none; font-size: 1.2em; margin: 15px 0 10px 0;">${content}</h3>`;
+        })
+        .replace(/^## (.*$)/gim, (match, content) => {
+            return `<h2 style="color: #3498db; text-transform: none; font-size: 1.4em; margin: 20px 0 15px 0; border-bottom: 2px solid #ecf0f1; padding-bottom: 5px;">${content}</h2>`;
+        })
+        .replace(/^# (.*$)/gim, (match, content) => {
+            return `<h1 style="color: #2980b9; text-transform: none; font-size: 1.6em; margin: 25px 0 20px 0;">${content}</h1>`;
+        })
+        .replace(/^\d+\.\s+(.*?)(?=\n\d+\.|\n\n|$)/gm, '<li style="margin-bottom: 8px;">$1</li>')
+        .replace(/^[•\-]\s+(.*?)(?=\n[•\-]|\n\n|$)/gm, '<li style="margin-bottom: 8px;">$1</li>')
+        .replace(/(<li.*?>.*?<\/li>)/gs, '<ul style="padding-left: 25px; margin: 10px 0;">$1</ul>')
+        .replace(/<\/ul>\s*<ul/g, '</ul><ul')
+        .replace(/✅/g, '<span style="color: #27ae60; font-size: 1.2em;">✅</span>')
+        .replace(/⚠️/g, '<span style="color: #f39c12; font-size: 1.2em;">⚠️</span>')
+        .replace(/❌/g, '<span style="color: #e74c3c; font-size: 1.2em;">❌</span>')
+        .replace(/💊/g, '<span style="color: #9b59b6; font-size: 1.2em;">💊</span>')
+        .replace(/🏥/g, '<span style="color: #3498db; font-size: 1.2em;">🏥</span>')
+        .replace(/📋/g, '<span style="color: #e67e22; font-size: 1.2em;">📋</span>')
+        .replace(/🤖/g, '<span style="color: #9b59b6; font-size: 1.2em;">🤖</span>')
+        .replace(/🔍/g, '<span style="color: #2ecc71; font-size: 1.2em;">🔍</span>')
+        .replace(/📊/g, '<span style="color: #3498db; font-size: 1.2em;">📊</span>');
+}
+
+// Функция для резервных рекомендаций
+function getFallbackRecommendation(diagnosis) {
+    return `
+# 🤖 AI Рекомендации (автономный режим)
+
+## 📋 Диагноз: ${diagnosis}
+
+## 💊 Общие рекомендации по лечению:
+
+### 1. Медикаментозная терапия
+- Конкретные препараты должен назначить врач после осмотра
+- Соблюдайте назначенные дозировки
+- Отслеживайте побочные эффекты
+
+### 2. Немедикаментозные методы
+- Соблюдение режима дня
+- Сбалансированное питание
+- Умеренная физическая активность
+- Избегание стрессовых ситуаций
+
+### 3. Наблюдение и контроль
+- Ведите дневник симптомов
+- Регулярно проходите обследования
+- Отмечайте динамику состояния
+
+### 4. Когда обратиться к врачу
+- При ухудшении состояния
+- При появлении новых симптомов
+- При отсутствии улучшения в течение 3-5 дней
+
+### 5. Экстренные случаи
+- Резкое ухудшение состояния
+- Сильная боль
+- Нарушение сознания
+- Высокая температура (выше 39°C)
+
+**⚠️ ВНИМАНИЕ:** Это общие рекомендации. Для точной диагностики и лечения обратитесь к врачу!
+
+*AI сервер временно недоступен. Это автономные рекомендации.*
+`;
+}
+
+// Делаем функции глобальными
+window.showAIResults = showAIResults;
+window.formatAIText = formatAIText;
+
+// ==============================
+// ФУНКЦИИ ДЛЯ ОБРАБОТКИ AI ТЕКСТА
+// ==============================
+
+// Список медицинских аббревиатур, которые нужно сохранить в верхнем регистре
+const MEDICAL_ABBREVIATIONS = [
+    'ИБС', 'АПФ', 'БРА', 'ВИЧ', 'СПИД', 'ЭКГ', 'УЗИ', 
+    'МРТ', 'КТ', 'COVID', 'СОЭ', 'ОАК', 'ОАМ', 'СМАД',
+    'ХОБЛ', 'ГБ', 'СД', 'АГ', 'ИМ', 'ОИМ', 'ОНМК', 'ТИА',
+    'ДВС', 'СПОН', 'ОПН', 'ХПН', 'ЦНС', 'ПНС', 'ЖКТ',
+    'ДНК', 'РНК', 'ПЦР', 'ИФА', 'рт.ст.', 'мм.рт.ст.'
+];
+
+// Список единиц измерения
+const MEASUREMENT_UNITS = [
+    'мг', 'г', 'кг', 'мл', 'л', 'сутки', 'сут', 'раз', 
+    'мкг', 'ед', 'МЕ', 'кап', 'таб', 'пач', 'уп', 'фл'
+];
+
+// Функция для определения, является ли слово аббревиатурой
+function isAbbreviation(word) {
+    const upperWord = word.toUpperCase();
+    
+    // Проверяем медицинские аббревиатуры
+    if (MEDICAL_ABBREVIATIONS.some(abbr => upperWord.includes(abbr))) {
+        return true;
+    }
+    
+    // Проверяем, является ли слово аббревиатурой (только заглавные буквы и точки)
+    if (/^[А-ЯA-Z]{2,}$/.test(word) || /^[А-ЯA-Z]{1,3}\.[А-ЯA-Z]{1,3}\.?$/.test(word)) {
+        return true;
+    }
+    
+    // Проверяем единицы измерения
+    if (MEASUREMENT_UNITS.includes(word.toLowerCase())) {
+        return false; // единицы измерения не аббревиатуры
+    }
+    
+    return false;
+}
+
+// Функция для нормализации регистра слова
+function normalizeWord(word, isFirstInSentence = false) {
+    if (!word || word.length === 0) return word;
+    
+    // Сохраняем цифры и спецсимволы
+    if (/^\d+$/.test(word) || /^[^\wа-яА-Я]+$/i.test(word)) {
+        return word;
+    }
+    
+    // Проверяем, является ли слово аббревиатурой
+    if (isAbbreviation(word)) {
+        return word.toUpperCase();
+    }
+    
+    // Для первого слова в предложении - первая буква заглавная, остальные строчные
+    if (isFirstInSentence) {
+        return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+    }
+    
+    // Для остальных слов
+    return word.toLowerCase();
+}
+
+// Основная функция для исправления регистра текста
+function fixTextCase(text) {
+    if (!text) return '';
+    
+    console.log("🔧 Исправление регистра текста...");
+    
+    // Разбиваем текст на строки
+    const lines = text.split('\n');
+    const resultLines = [];
+    
+    for (const line of lines) {
+        if (!line.trim()) {
+            resultLines.push(line);
+            continue;
+        }
+        
+        // Обрабатываем каждую строку
+        const words = line.split(/(\s+)/);
+        const processedWords = [];
+        let isFirstWordInLine = true;
+        
+        for (let i = 0; i < words.length; i++) {
+            const word = words[i];
+            
+            // Если это пробелы или табуляции, сохраняем как есть
+            if (/^\s+$/.test(word)) {
+                processedWords.push(word);
+                continue;
+            }
+            
+            // Проверяем, содержит ли слово пунктуацию
+            if (/[.!?]$/.test(word) && i < words.length - 1) {
+                // Разделяем слово и пунктуацию
+                const match = word.match(/^([^.!?]+)([.!?]+)$/);
+                if (match) {
+                    const wordPart = match[1];
+                    const punctuation = match[2];
+                    const normalizedWord = normalizeWord(wordPart, isFirstWordInLine);
+                    processedWords.push(normalizedWord + punctuation);
+                    isFirstWordInLine = true; // Следующее слово будет первым в предложении
+                    continue;
+                }
+            }
+            
+            // Нормализуем слово
+            const normalizedWord = normalizeWord(word, isFirstWordInLine);
+            processedWords.push(normalizedWord);
+            
+            // Если слово содержит точку, восклицательный или вопросительный знак
+            if (/[.!?]/.test(word)) {
+                isFirstWordInLine = true;
+            } else {
+                isFirstWordInLine = false;
+            }
+        }
+        
+        resultLines.push(processedWords.join(''));
+    }
+    
+    return resultLines.join('\n');
+}
+
+// Функция обработки списков
+function processLists(text) {
+    // Обрабатываем нумерованные списки
+    text = text.replace(/^(\d+\.)\s+(.*?)$/gm, (match, number, content) => {
+        return `${number} ${fixTextCase(content)}`;
+    });
+    
+    // Обрабатываем маркированные списки
+    text = text.replace(/^([•\-*])\s+(.*?)$/gm, (match, bullet, content) => {
+        return `${bullet} ${fixTextCase(content)}`;
+    });
+    
+    return text;
+}
+
+// Основная функция форматирования AI текста
+function formatAIText(text) {
+    if (!text) return '<p style="color: #666; font-style: italic;">Нет рекомендаций</p>';
+    
+    console.log("🎨 Начинаем форматирование AI текста...");
+    
+    try {
+        // Шаг 1: Исправляем регистр во всем тексте
+        let processedText = fixTextCase(text);
+        
+        // Шаг 2: Обрабатываем списки
+        processedText = processLists(processedText);
+        
+        // Шаг 3: HTML форматирование
+        let html = processedText;
+        
+        // 3.1: Обработка заголовков
+        html = html.replace(/^# (.+)$/gm, '<h1 style="color: #2980b9; font-size: 1.8em; margin: 20px 0 15px 0; padding-bottom: 10px; border-bottom: 2px solid #ecf0f1; text-transform: none;">$1</h1>');
+        html = html.replace(/^## (.+)$/gm, '<h2 style="color: #3498db; font-size: 1.5em; margin: 18px 0 12px 0; text-transform: none;">$1</h2>');
+        html = html.replace(/^### (.+)$/gm, '<h3 style="color: #2c3e50; font-size: 1.3em; margin: 15px 0 10px 0; text-transform: none;">$1</h3>');
+        
+        // 3.2: Обработка жирного текста
+        html = html.replace(/\*\*(.+?)\*\*/g, '<strong style="font-weight: 600;">$1</strong>');
+        
+        // 3.3: Обработка курсива
+        html = html.replace(/\*(.+?)\*/g, '<em style="font-style: italic;">$1</em>');
+        
+        // 3.4: Обработка списков
+        // Сначала обрабатываем каждый элемент списка
+        html = html.replace(/^(\d+\.|\•|\-|\*)\s+(.+?)(?=\n|$)/gm, (match, bullet, content) => {
+            return `<li style="margin-bottom: 8px; padding-left: 5px;">${content}</li>`;
+        });
+        
+        // Затем группируем элементы в списки
+        const lines = html.split('\n');
+        let inList = false;
+        let listItems = [];
+        let result = [];
+        
+        for (let line of lines) {
+            if (line.startsWith('<li')) {
+                if (!inList) {
+                    inList = true;
+                }
+                listItems.push(line);
+            } else {
+                if (inList) {
+                    result.push(`<ul style="padding-left: 25px; margin: 15px 0; list-style-type: disc;">${listItems.join('\n')}</ul>`);
+                    listItems = [];
+                    inList = false;
+                }
+                result.push(line);
+            }
+        }
+        
+        // Добавляем последний список, если есть
+        if (inList) {
+            result.push(`<ul style="padding-left: 25px; margin: 15px 0; list-style-type: disc;">${listItems.join('\n')}</ul>`);
+        }
+        
+        html = result.join('\n');
+        
+        // 3.5: Обработка параграфов
+        html = html.replace(/\n\n+/g, '</p><p style="margin: 10px 0; line-height: 1.6;">');
+        html = html.replace(/\n/g, '<br>');
+        
+        // 3.6: Обработка эмодзи
+        const emojiStyles = {
+            '✅': 'color: #27ae60;',
+            '⚠️': 'color: #f39c12;',
+            '❌': 'color: #e74c3c;',
+            '💊': 'color: #9b59b6;',
+            '🏥': 'color: #3498db;',
+            '📋': 'color: #e67e22;',
+            '🤖': 'color: #8e44ad;',
+            '🔍': 'color: #2ecc71;',
+            '📊': 'color: #3498db;',
+            '👨‍⚕️': 'color: #2980b9;',
+            '👩‍⚕️': 'color: #2980b9;',
+            '❤️': 'color: #e74c3c;'
+        };
+        
+        for (const [emoji, style] of Object.entries(emojiStyles)) {
+            html = html.replace(new RegExp(emoji, 'g'), `<span style="${style} font-size: 1.1em; margin: 0 2px;">${emoji}</span>`);
+        }
+        
+        // 3.7: Оборачиваем в параграф, если нет тегов
+        if (!html.includes('<h') && !html.includes('<ul') && !html.includes('<li')) {
+            html = `<p style="margin: 10px 0; line-height: 1.6;">${html}</p>`;
+        }
+        
+        // 3.8: Добавляем общий контейнер
+        html = `<div class="ai-recommendations" style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 14px; line-height: 1.6; color: #333; text-transform: none !important;">${html}</div>`;
+        
+        console.log("✅ Форматирование завершено");
+        return html;
+        
+    } catch (error) {
+        console.error("❌ Ошибка при форматировании AI текста:", error);
+        return `<p style="color: #e74c3c;">Ошибка обработки текста: ${error.message}</p>`;
+    }
+}
+
+// Альтернативная упрощенная функция для экстренных случаев
+function formatAITextSimple(text) {
+    if (!text) return '<p>Нет рекомендаций</p>';
+    
+    // Самый простой способ: преобразовать весь текст в нижний регистр, 
+    // затем сделать первую букву каждого предложения заглавной
+    let result = text.toLowerCase();
+    
+    // Разбиваем на предложения
+    result = result.replace(/(^|\.\s+|\?\s+|\!\s+)([a-zа-я])/g, function(match, separator, letter) {
+        return separator + letter.toUpperCase();
+    });
+    
+    // Сохраняем медицинские аббревиатуры
+    MEDICAL_ABBREVIATIONS.forEach(abbr => {
+        const regex = new RegExp(`\\b${abbr.toLowerCase()}\\b`, 'gi');
+        result = result.replace(regex, abbr);
+    });
+    
+    // HTML форматирование
+    result = result
+        .replace(/\n\n+/g, '</p><p>')
+        .replace(/\n/g, '<br>')
+        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    
+    return `<div style="text-transform: none !important;">${result}</div>`;
+}
+
+// Улучшенная функция showAIResults
+function showAIResults(aiText, patientData) {
+    const resultsDiv = document.getElementById('results');
+    const analysisResultsDiv = document.getElementById('analysisResults');
+    
+    if (!resultsDiv || !analysisResultsDiv) {
+        console.error('❌ Не найдены элементы для отображения результатов');
+        return;
+    }
+    
+    // Сначала пробуем улучшенное форматирование
+    let formattedText = formatAIText(aiText);
+    
+    // Если результат все еще содержит много заглавных букв, используем упрощенную версию
+    const uppercaseRatio = (formattedText.match(/[А-ЯA-Z]/g) || []).length / Math.max(formattedText.length, 1);
+    if (uppercaseRatio > 0.3) { // Если больше 30% заглавных букв
+        console.log("⚠️ Много заглавных букв, используем упрощенное форматирование");
+        formattedText = formatAITextSimple(aiText);
+    }
+    
+    const htmlContent = `
+        <div class="analysis-result" style="font-family: Arial, sans-serif; line-height: 1.6;">
+            <div style="
+                background: white;
+                padding: 25px;
+                border-radius: 10px;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                margin-bottom: 20px;
+                text-transform: none !important;
+            ">
+                <div style="display: flex; align-items: center; margin-bottom: 20px;">
+                    <div style="font-size: 2em; margin-right: 15px;">🤖</div>
+                    <div>
+                        <h2 style="color: #3498db; margin: 0; padding: 0; text-transform: none;">AI-рекомендации по лечению</h2>
+                        <p style="color: #666; margin: 5px 0 0 0;">Сгенерировано моделью mistral:7b</p>
+                    </div>
+                </div>
+                
+                <div style="
+                    background: #f8f9fa;
+                    padding: 20px;
+                    border-radius: 8px;
+                    margin-bottom: 20px;
+                    border-left: 4px solid #3498db;
+                    text-transform: none !important;
+                    font-variant: normal !important;
+                    font-weight: normal !important;
+                ">
+                    ${formattedText}
+                </div>
+                
+                <div style="
+                    margin-top: 20px;
+                    padding: 15px;
+                    background: #fff;
+                    border: 1px solid #e9ecef;
+                    border-radius: 5px;
+                    text-transform: none !important;
+                ">
+                    <h4 style="color: #2c3e50; margin-top: 0; text-transform: none;">📊 Данные пациента для AI-анализа:</h4>
+                    <div style="
+                        max-height: 200px;
+                        overflow-y: auto;
+                        background: #f8f9fa;
+                        padding: 10px;
+                        border-radius: 4px;
+                        font-family: monospace;
+                        font-size: 12px;
+                        text-transform: none !important;
+                    ">
+                        <pre style="margin: 0; text-transform: none !important;">${JSON.stringify(patientData, null, 2)}</pre>
+                    </div>
+                </div>
+                
+                <div style="text-align: center; margin-top: 20px;">
+                    <button onclick="window.analyzeData()" style="
+                        background-color: #2ecc71;
+                        color: white;
+                        border: none;
+                        padding: 10px 20px;
+                        border-radius: 5px;
+                        cursor: pointer;
+                        font-size: 14px;
+                        margin-right: 10px;
+                    ">
+                        📊 Вернуться к структурированному анализу
+                    </button>
+                    
+                    <button onclick="location.reload()" style="
+                        background-color: #3498db;
+                        color: white;
+                        border: none;
+                        padding: 10px 20px;
+                        border-radius: 5px;
+                        cursor: pointer;
+                        font-size: 14px;
+                    ">
+                        🔄 Обновить рекомендации
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    analysisResultsDiv.innerHTML = htmlContent;
+    resultsDiv.style.display = 'block';
+    
+    // Принудительно применяем стили для всех элементов
+    setTimeout(() => {
+        const aiElements = resultsDiv.querySelectorAll('*');
+        aiElements.forEach(el => {
+            el.style.textTransform = 'none !important';
+            el.style.fontVariant = 'normal !important';
+            el.style.fontWeight = 'normal !important';
+        });
+    }, 100);
+    
+    resultsDiv.scrollIntoView({ behavior: 'smooth' });
+}
+
+// Экспортируем функции
+window.fixTextCase = fixTextCase;
+window.formatAIText = formatAIText;
+window.formatAITextSimple = formatAITextSimple;
+window.showAIResults = showAIResults;
