@@ -4007,4 +4007,368 @@ window.testKnowledgeBase = function() {
     return "Проверка завершена";
 };
 
+// ============================================
+// СИСТЕМА ОТСЛЕЖИВАНИЯ НЕДОСТАЮЩИХ ПОЛЕЙ (ПОЛНАЯ ВЕРСИЯ)
+// ============================================
+
+// Хранилище для недостающих полей
+let missingFieldsTracker = {
+    fields: [],
+    lastAnalysisTime: null
+};
+
+// Функция проверки заполненности полей (универсальная)
+function ultimateCheckIfPatientHasField(fieldName, patientData) {
+    if (!patientData) return false;
+    
+    // Маппинг: как называются поля в UI -> как они хранятся в данных
+    const fieldMapping = {
+        "Цирроз печени": {
+            searchKeys: ["Сопутствующий диагноз", "сопутствующий диагноз", "Цирроз"],
+            expectedValue: "Цирроз печени"
+        },
+        "Генотип вируса": {
+            searchKeys: ["Анализ крови на гепатит С с определением генотипа_Результат", "генотип", "Генотип"],
+            checkValue: true
+        },
+        "Опыт противовирусной терапии (ПВТ)": {
+            searchKeys: ["Опыт терапии_Опыт терапии_ПВТ (противовирусной терапии)", "Опыт терапии_ПВТ", "ПВТ"],
+            checkValue: true
+        },
+        "Трансплантация печени": {
+            searchKeys: ["Операции в прошлом", "трансплантация"],
+            expectedValue: "трансплантация"
+        },
+        "Локализация перелома": {
+            searchKeys: ["Локализация", "локализация"],
+            checkValue: true
+        },
+        "Тип повреждения": {
+            searchKeys: ["Тип повреждения", "тип повреждения"],
+            checkValue: true
+        },
+        "Выраженность приступа": {
+            searchKeys: ["Выраженность", "Приступ мигрени"],
+            checkValue: true
+        }
+    };
+    
+    const mapping = fieldMapping[fieldName];
+    if (!mapping) {
+        // Если нет специального маппинга, ищем по ключу
+        for (const [key, value] of Object.entries(patientData)) {
+            if (key.toLowerCase().includes(fieldName.toLowerCase())) {
+                if (value && value !== '' && value !== '-- Выберите значение --') {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+    
+    // Ищем по всем возможным ключам
+    for (const searchKey of mapping.searchKeys) {
+        const value = patientData[searchKey];
+        if (value !== undefined && value !== null && value !== '') {
+            let actualValue = value;
+            if (Array.isArray(value)) {
+                if (value.length === 0) continue;
+                actualValue = value[0];
+            }
+            
+            const valueStr = String(actualValue).toLowerCase().trim();
+            
+            // Если есть ожидаемое значение
+            if (mapping.expectedValue) {
+                const expectedLower = mapping.expectedValue.toLowerCase();
+                if (valueStr.includes(expectedLower) || expectedLower.includes(valueStr)) {
+                    return true;
+                }
+                if (valueStr && valueStr !== '' && valueStr !== 'не указан') {
+                    return true;
+                }
+            }
+            // Если нет ожидаемого значения, просто проверяем что не пусто
+            else if (valueStr && valueStr !== '' && valueStr !== '-- выберите значение --') {
+                return true;
+            }
+        }
+    }
+    
+    return false;
+}
+
+// Функция для извлечения недостающих полей из текста анализа
+function extractMissingFieldsFromAnalysis(explanationText, patientData) {
+    const missingFields = [];
+    
+    if (!explanationText) return missingFields;
+    
+    // Проверяем, выбран ли общий вариант
+    if (explanationText.includes("Общие рекомендации (без специфической категории)")) {
+        
+        // Для гепатита C
+        if (explanationText.includes("Хронический вирусный гепатит C")) {
+            const fieldsToCheck = [
+                { name: "Цирроз печени", description: "Укажите, есть ли цирроз печени (в сопутствующих диагнозах)" },
+                { name: "Генотип вируса", description: "Укажите результат анализа на генотип (1a, 1b, 2, 3)" },
+                { name: "Опыт противовирусной терапии (ПВТ)", description: "Укажите, был ли опыт лечения ПВТ" },
+                { name: "Трансплантация печени", description: "Укажите, была ли трансплантация печени в прошлом" }
+            ];
+            
+            for (const field of fieldsToCheck) {
+                const hasValue = ultimateCheckIfPatientHasField(field.name, patientData);
+                if (!hasValue) {
+                    missingFields.push({
+                        displayName: field.name,
+                        description: field.description,
+                        isMissing: true
+                    });
+                }
+            }
+        }
+        
+        // Для переломов лодыжек
+        if (explanationText.includes("Переломы лодыжек")) {
+            const fieldsToCheck = [
+                { name: "Локализация перелома", description: "Укажите локализацию (медиальная/латеральная лодыжка)" },
+                { name: "Тип повреждения", description: "Укажите тип (со смещением/без смещения)" },
+                { name: "Возраст", description: "Укажите возраст пациента" }
+            ];
+            
+            for (const field of fieldsToCheck) {
+                const hasValue = ultimateCheckIfPatientHasField(field.name, patientData);
+                if (!hasValue) {
+                    missingFields.push({
+                        displayName: field.name,
+                        description: field.description,
+                        isMissing: true
+                    });
+                }
+            }
+        }
+        
+        // Для мигрени
+        if (explanationText.includes("Мигрень")) {
+            const fieldsToCheck = [
+                { name: "Выраженность приступа", description: "Укажите тяжесть приступа (легкая/средняя/тяжелая)" },
+                { name: "Тошнота/рвота", description: "Укажите наличие тошноты или рвоты" }
+            ];
+            
+            for (const field of fieldsToCheck) {
+                const hasValue = ultimateCheckIfPatientHasField(field.name, patientData);
+                if (!hasValue) {
+                    missingFields.push({
+                        displayName: field.name,
+                        description: field.description,
+                        isMissing: true
+                    });
+                }
+            }
+        }
+    }
+    
+    return missingFields;
+}
+
+// Функция для отображения панели с недостающими полями
+function showMissingFieldsPanel(missingFields) {
+    const resultsDiv = document.getElementById('results');
+    const analysisResultsDiv = document.getElementById('analysisResults');
+    
+    if (!resultsDiv || !analysisResultsDiv) return;
+    if (!missingFields || missingFields.length === 0) return;
+    
+    // Удаляем старую панель, если есть
+    const oldPanel = document.getElementById('missingFieldsPanel');
+    if (oldPanel) oldPanel.remove();
+    
+    // Создаем новую панель
+    const panelHTML = `
+        <div id="missingFieldsPanel" style="
+            background: #fff3e0;
+            border-left: 4px solid #ff9800;
+            padding: 15px 20px;
+            margin: 0 0 20px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        ">
+            <div style="display: flex; align-items: center; margin-bottom: 12px;">
+                <span style="font-size: 24px; margin-right: 10px;">⚠️</span>
+                <h3 style="margin: 0; color: #e67e22;">Недостаточно данных для точного выбора варианта</h3>
+            </div>
+            <p style="margin: 0 0 12px 0; color: #666;">
+                Для получения точной рекомендации заполните следующие поля:
+            </p>
+            <ul style="margin: 0 0 15px 0; padding-left: 20px;">
+                ${missingFields.map(field => `
+                    <li style="margin-bottom: 8px;">
+                        <strong style="color: #e67e22;">${field.displayName}</strong>
+                        <span style="color: #666;"> — ${field.description}</span>
+                    </li>
+                `).join('')}
+            </ul>
+            <div style="display: flex; gap: 10px; margin-top: 15px;">
+                <button id="highlightMissingBtn" style="
+                    background: #ff9800;
+                    color: white;
+                    border: none;
+                    padding: 8px 16px;
+                    border-radius: 5px;
+                    cursor: pointer;
+                    font-size: 14px;
+                ">
+                    🔍 Перейти к незаполненным полям
+                </button>
+                <button id="refreshAnalysisBtn" style="
+                    background: #4caf50;
+                    color: white;
+                    border: none;
+                    padding: 8px 16px;
+                    border-radius: 5px;
+                    cursor: pointer;
+                    font-size: 14px;
+                ">
+                    🔄 Обновить анализ после заполнения
+                </button>
+            </div>
+        </div>
+    `;
+    
+    // Вставляем панель в начало
+    analysisResultsDiv.insertAdjacentHTML('afterbegin', panelHTML);
+    
+    // Добавляем обработчики
+    const highlightBtn = document.getElementById('highlightMissingBtn');
+    if (highlightBtn) {
+        highlightBtn.addEventListener('click', () => {
+            highlightMissingFieldsByList(missingFields);
+        });
+    }
+    
+    const refreshBtn = document.getElementById('refreshAnalysisBtn');
+    if (refreshBtn) {
+        refreshBtn.addEventListener('click', () => {
+            if (window.analyzeData) window.analyzeData();
+        });
+    }
+}
+
+// Подсветка полей по списку
+function highlightMissingFieldsByList(missingFields) {
+    missingFields.forEach(field => {
+        highlightFieldByName(field.displayName);
+    });
+}
+
+// Подсветка конкретного поля по названию
+function highlightFieldByName(fieldName) {
+    const fieldMapping = {
+        'Цирроз печени': { tab: 'Общие сведения', selectors: ['Сопутствующий диагноз', 'сопутствующий диагноз'] },
+        'Генотип вируса': { tab: 'Сведения в динамике', selectors: ['Анализ крови на гепатит С с определением генотипа', 'генотип'] },
+        'Опыт противовирусной терапии (ПВТ)': { tab: 'Сведения в динамике', selectors: ['Опыт терапии', 'ПВТ'] },
+        'Трансплантация печени': { tab: 'Общие сведения', selectors: ['Операции в прошлом', 'трансплантация'] },
+        'Локализация перелома': { tab: 'Расширенный клинический диагноз', selectors: ['Локализация', 'локализация'] },
+        'Тип повреждения': { tab: 'Расширенный клинический диагноз', selectors: ['Тип повреждения', 'тип повреждения'] },
+        'Выраженность приступа': { tab: 'Жалобы', selectors: ['Приступ мигрени', 'Выраженность'] }
+    };
+    
+    const mapping = fieldMapping[fieldName];
+    if (!mapping) return;
+    
+    // Переключаемся на вкладку
+    switchToTab(mapping.tab);
+    
+    // Ищем элемент
+    setTimeout(() => {
+        const activeContent = document.querySelector('.tab-contents');
+        if (!activeContent) return;
+        
+        for (const selector of mapping.selectors) {
+            let element = null;
+            
+            // Ищем по name
+            element = activeContent.querySelector(`[name*="${selector}" i]`);
+            
+            // Ищем по тексту метки
+            if (!element) {
+                const labels = activeContent.querySelectorAll('label');
+                for (const label of labels) {
+                    if (label.textContent.toLowerCase().includes(selector.toLowerCase())) {
+                        const parent = label.parentElement;
+                        element = parent.querySelector('input, select, textarea');
+                        break;
+                    }
+                }
+            }
+            
+            if (element) {
+                const originalBorder = element.style.border;
+                const originalBg = element.style.backgroundColor;
+                
+                element.style.transition = 'all 0.3s ease';
+                element.style.border = '2px solid #ff9800';
+                element.style.backgroundColor = '#fff3e0';
+                element.style.boxShadow = '0 0 5px rgba(255, 152, 0, 0.5)';
+                
+                element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                
+                setTimeout(() => {
+                    element.style.border = originalBorder;
+                    element.style.backgroundColor = originalBg;
+                    element.style.boxShadow = '';
+                }, 3000);
+                
+                break;
+            }
+        }
+    }, 200);
+}
+
+// Переключение на вкладку
+function switchToTab(tabName) {
+    const headers = document.querySelectorAll('.tab-header');
+    for (const header of headers) {
+        if (header.innerText.trim() === tabName) {
+            header.click();
+            break;
+        }
+    }
+}
+
+// Сохраняем оригинальную функцию
+const originalShowAnalysisResults = window.showAnalysisResults || function(explanation, patientData) {
+    const resultsDiv = document.getElementById('results');
+    const analysisResultsDiv = document.getElementById('analysisResults');
+    if (analysisResultsDiv) {
+        analysisResultsDiv.innerHTML = explanation.replace(/\n/g, '<br>');
+        if (resultsDiv) resultsDiv.style.display = 'block';
+    }
+};
+
+// Переопределяем функцию отображения результатов
+window.showAnalysisResults = function(explanation, patientData) {
+    const missingFields = extractMissingFieldsFromAnalysis(explanation, patientData);
+    
+    // Показываем результаты
+    originalShowAnalysisResults(explanation, patientData);
+    
+    // Показываем панель с недостающими полями
+    if (missingFields && missingFields.length > 0) {
+        setTimeout(() => {
+            showMissingFieldsPanel(missingFields);
+        }, 100);
+    }
+};
+
+// Экспортируем функции для использования в других файлах
+window.ultimateCheckIfPatientHasField = ultimateCheckIfPatientHasField;
+window.extractMissingFieldsFromAnalysis = extractMissingFieldsFromAnalysis;
+window.showMissingFieldsPanel = showMissingFieldsPanel;
+window.highlightMissingFieldsByList = highlightMissingFieldsByList;
+window.highlightFieldByName = highlightFieldByName;
+window.switchToTab = switchToTab;
+
+console.log("✅ Система отслеживания недостающих полей загружена!");
+
 window.analyzeData = analyzeData;
