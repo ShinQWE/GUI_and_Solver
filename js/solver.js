@@ -124,11 +124,9 @@ function generate_universal_explanation(patient_data, knowledge_base) {
 
     console.log("📋 Диагноз пациента:", patientDiagnosis);
 
-    // 1. ЗАГОЛОВОК С ДИАГНОЗОМ
     result.push(`🎯 **ДИАГНОЗ:** ${patientDiagnosis}`);
     result.push("");
 
-    // 2. ИЩЕМ В БАЗЕ ЗНАНИЙ
     const klinrek = knowledge_base["КлинРек II ур"];
     if (!klinrek) {
         result.push("❌ База знаний имеет неверный формат");
@@ -143,15 +141,35 @@ function generate_universal_explanation(patient_data, knowledge_base) {
 
     const diseaseSection = diseases[patientDiagnosis];
     
-    // 3. ИЩЕМ ВО ВСЕХ ТИПАХ УЗЛОВ
+    // ===== НОВАЯ ЧАСТЬ: НОРМАЛИЗАЦИЯ ДАННЫХ ПАЦИЕНТА =====
+    const normalizedPatientData = normalizePatientDataForHepatitis(patient_data);
+    console.log("📊 Нормализованные данные пациента:", normalizedPatientData);
+    
+    // ===== НОВАЯ ЧАСТЬ: ПОИСК ГЕНОТИПА =====
+    const patientGenotype = findGenotypeInPatientDataAdvanced(patient_data);
+    console.log("🧬 Генотип пациента:", patientGenotype);
+    
+    // ===== НОВАЯ ЧАСТЬ: ОПРЕДЕЛЕНИЕ НАЛИЧИЯ ЦИРРОЗА =====
+    const hasCirrhosis = detectCirrhosis(patient_data);
+    console.log("🏥 Цирроз печени:", hasCirrhosis ? "есть" : "отсутствует");
+    
+    // ===== НОВАЯ ЧАСТЬ: ОПРЕДЕЛЕНИЕ ТРАНСПЛАНТАЦИИ =====
+    const hasTransplant = detectTransplant(patient_data);
+    console.log("🩺 Трансплантация печени:", hasTransplant ? "была" : "не было");
+    
+    // ===== НОВАЯ ЧАСТЬ: ОПЫТ ПВТ =====
+    const hasPVTExperience = detectPVTExperience(patient_data);
+    console.log("💊 Опыт ПВТ:", hasPVTExperience);
+    
+    // ===== НОВАЯ ЧАСТЬ: ИЩЕМ ВАРИАНТЫ С УЧЕТОМ ЭТИХ ДАННЫХ =====
+    let allCheckedVariants = [];
+    let variantsWithoutCategory = [];
+    
     const nodeTypes = [
         { key: "Стадия (Фаза)", priority: 3 },
         { key: "Вариант течения (функциональный класс)", priority: 2 },
         { key: "Функциональный класс заболевания", priority: 1 }
     ];
-    
-    let allCheckedVariants = [];
-    let variantsWithoutCategory = [];
     
     for (const nodeTypeInfo of nodeTypes) {
         const nodeType = nodeTypeInfo.key;
@@ -163,298 +181,409 @@ function generate_universal_explanation(patient_data, knowledge_base) {
         console.log(`\n🔍 АНАЛИЗ УЗЛА: "${nodeType}" (приоритет ${priority})`);
         
         for (const [variantName, variantData] of Object.entries(nodeData)) {
-            console.log(`\n🔎 ПРОВЕРЯЕМ ВАРИАНТ/СТАДИЮ: "${variantName}"`);
+            console.log(`\n🔎 ПРОВЕРЯЕМ ВАРИАНТ: "${variantName}"`);
             
             if (!variantData["Инструкция"]) continue;
             
-            const instructions = variantData["Инструкция"];
+            // ОСОБАЯ ПРОВЕРКА ДЛЯ ГЕПАТИТА C - по генотипу
+            const genotypeSpecificMatch = checkGenotypeSpecificMatch(variantName, patientGenotype);
             
-            for (const [instKey, instruction] of Object.entries(instructions)) {
-                const patientCategory = instruction["Категория пациента"];
-                
-                if (!patientCategory) {
-                    console.log(`✅ Вариант "${variantName}" без категории (подходит всем)`);
+            // ОСОБАЯ ПРОВЕРКА ДЛЯ ЦИРРОЗА
+            const cirrhosisMatch = checkCirrhosisSpecificMatch(variantName, hasCirrhosis);
+            
+            // ОСОБАЯ ПРОВЕРКА ДЛЯ ТРАНСПЛАНТАЦИИ
+            const transplantMatch = checkTransplantSpecificMatch(variantName, hasTransplant);
+            
+            // ОСОБАЯ ПРОВЕРКА ДЛЯ ОПЫТА ПВТ
+            const pvtMatch = checkPVTSpecificMatch(variantName, hasPVTExperience);
+            
+            // Если есть специфические несоответствия - пропускаем вариант
+            if (genotypeSpecificMatch === false || 
+                cirrhosisMatch === false || 
+                transplantMatch === false || 
+                pvtMatch === false) {
+                console.log(`❌ Вариант "${variantName}" исключен из-за несоответствия специфическим критериям`);
+                continue;
+            }
+            
+            // Если специфическое совпадение (например, точное совпадение генотипа) - большой бонус
+            let matchScore = 50;
+            if (genotypeSpecificMatch === true) matchScore += 30;
+            if (cirrhosisMatch === true) matchScore += 20;
+            if (transplantMatch === true) matchScore += 20;
+            if (pvtMatch === true) matchScore += 15;
+            
+            // Добавляем приоритет узла
+            matchScore += priority * 5;
+            
+            allCheckedVariants.push({
+                variantName,
+                nodeType,
+                priority,
+                instruction: variantData["Инструкция"],
+                matchScore: matchScore,
+                genotypeMatch: genotypeSpecificMatch,
+                cirrhosisMatch: cirrhosisMatch,
+                transplantMatch: transplantMatch,
+                pvtMatch: pvtMatch
+            });
+        }
+    }
+    
+    // Добавляем варианты, у которых нет категории
+    for (const nodeTypeInfo of nodeTypes) {
+        const nodeData = diseaseSection[nodeTypeInfo.key];
+        if (!nodeData) continue;
+        
+        for (const [variantName, variantData] of Object.entries(nodeData)) {
+            if (!variantData["Инструкция"]) continue;
+            
+            // Проверяем, есть ли у этого варианта категория
+            let hasCategory = false;
+            for (const instKey in variantData["Инструкция"]) {
+                if (variantData["Инструкция"][instKey]["Категория пациента"]) {
+                    hasCategory = true;
+                    break;
+                }
+            }
+            
+            if (!hasCategory) {
+                const alreadyAdded = allCheckedVariants.some(v => v.variantName === variantName);
+                if (!alreadyAdded) {
                     variantsWithoutCategory.push({
                         variantName,
-                        instruction,
-                        nodeType,
-                        priority,
-                        reason: "Без ограничений по категории"
+                        nodeType: nodeTypeInfo.key,
+                        priority: nodeTypeInfo.priority,
+                        instruction: variantData["Инструкция"],
+                        matchScore: 50 + nodeTypeInfo.priority * 5
                     });
-                    continue;
                 }
-                
-                console.log("📋 Категория пациента в базе:", patientCategory);
-                const matchResult = checkPatientCategory(patientCategory, patient_data);
-                console.log("📊 Результат проверки:", {
-                    matches: matchResult.matches,
-                    details: matchResult.details,
-                    missing: matchResult.missing
-                });
-                
-                let matchScore = calculateMatchScoreWithNormalization(matchResult, variantName, patient_data);
-                matchScore += priority * 5;
-                
-                allCheckedVariants.push({
-                    variantName,
-                    nodeType,
-                    priority,
-                    hasCategory: true,
-                    matches: matchResult.matches,
-                    details: matchResult.details,
-                    missing: matchResult.missing,
-                    instruction: instruction,
-                    matchScore: matchScore,
-                    matchResult: matchResult
-                });
             }
         }
     }
-
-    // 4. СОБИРАЕМ ВСЕ ПОДХОДЯЩИЕ ВАРИАНТЫ
-    const SUITABLE_THRESHOLD = 60;
     
-    // Все варианты, которые подходят (score >= порога)
-    let allSuitableVariants = allCheckedVariants.filter(v => v.matchScore >= SUITABLE_THRESHOLD);
+    // Сортируем все варианты по скору
+    allCheckedVariants.sort((a, b) => b.matchScore - a.matchScore);
+    variantsWithoutCategory.sort((a, b) => b.matchScore - a.matchScore);
     
-    // Добавляем варианты без категории
-    allSuitableVariants.push(...variantsWithoutCategory);
-    
-    // Сортируем по скору (по убыванию)
-    allSuitableVariants.sort((a, b) => b.matchScore - a.matchScore);
-    
-    // Убираем дубликаты по имени варианта и типу узла
-    const uniqueVariants = [];
-    const seen = new Set();
-    for (const variant of allSuitableVariants) {
-        const key = `${variant.nodeType}|${variant.variantName}`;
-        if (!seen.has(key)) {
-            seen.add(key);
-            uniqueVariants.push(variant);
-        }
-    }
-    
-    console.log("\n📊 ВСЕ ПОДХОДЯЩИЕ ВАРИАНТЫ:");
-    uniqueVariants.forEach(v => {
-        console.log(`- "${v.variantName}" (${v.nodeType}): ${v.matchScore}%`);
-    });
-    
-    // 5. ВЫБОР ЛУЧШЕГО ВАРИАНТА
+    // Выбираем лучший вариант
     let finalMatch = null;
     let otherVariants = [];
     
-    if (uniqueVariants.length > 0) {
-        finalMatch = uniqueVariants[0];
-        
-        // Остальные варианты (кроме лучшего)
-        otherVariants = uniqueVariants.slice(1).filter(v => v.matchScore >= 50);
-        
-        console.log(`✅ Выбран лучший вариант: "${finalMatch.variantName}" (${finalMatch.matchScore}%)`);
-        console.log(`📋 Другие подходящие варианты: ${otherVariants.length}`);
-    }
-    
-    // Если нет подходящих, ищем вариант без категории или любой
-    if (!finalMatch && variantsWithoutCategory.length > 0) {
-        variantsWithoutCategory.sort((a, b) => b.priority - a.priority);
-        finalMatch = variantsWithoutCategory[0];
-        console.log("⚠️ Используем вариант без категории");
-    } else if (!finalMatch && allCheckedVariants.length > 0) {
-        allCheckedVariants.sort((a, b) => b.matchScore - a.matchScore);
+    if (allCheckedVariants.length > 0) {
         finalMatch = allCheckedVariants[0];
-        console.log(`✅ Выбран вариант с наивысшим скором: "${finalMatch.variantName}" (${finalMatch.matchScore}%)`);
+        otherVariants = allCheckedVariants.slice(1).filter(v => v.matchScore >= 50);
+        console.log(`✅ Выбран вариант: "${finalMatch.variantName}" (${finalMatch.matchScore}%)`);
+    } else if (variantsWithoutCategory.length > 0) {
+        finalMatch = variantsWithoutCategory[0];
+        console.log(`⚠️ Использован вариант без категории: "${finalMatch.variantName}"`);
     }
     
     if (!finalMatch) {
         result.push("❌ **НЕ НАЙДЕНО ПОДХОДЯЩЕГО ВАРИАНТА**");
-        result.push("");
-        
-        if (allCheckedVariants.length > 0) {
-            result.push("**Причины несоответствия:**");
-            allCheckedVariants.slice(0, 3).forEach(variant => {
-                if (variant.missing && variant.missing.length > 0) {
-                    result.push(`- ${variant.variantName} (${variant.nodeType}):`);
-                    variant.missing.slice(0, 2).forEach(missing => {
-                        result.push(`  ❌ ${missing}`);
-                    });
-                }
-            });
-        }
-        
         return result.join("\n");
     }
-
-    // 6. ОСНОВНАЯ РЕКОМЕНДАЦИЯ
+    
+    // Вывод результата
     result.push(`👤 **${finalMatch.nodeType || "КАТЕГОРИЯ ПАЦИЕНТА"} (из базы знаний):**`);
     result.push(`**Выбранный вариант:** ${finalMatch.variantName}`);
     
-    // Показываем совпадения для лучшего варианта
-    if (finalMatch.details && finalMatch.details.length > 0) {
-        result.push("**Соответствия:**");
-        finalMatch.details.forEach(detail => {
-            const cleanDetail = detail.replace(/[✅❌⚠️•]/g, '').trim();
-            if (cleanDetail) result.push(`• ${cleanDetail}`);
-        });
-    } else {
-        result.push("• Без специфических критериев");
+    // Показываем соответствия
+    const matches = [];
+    if (finalMatch.genotypeMatch === true && patientGenotype) {
+        matches.push(`✅ Генотип ${patientGenotype} соответствует`);
+    } else if (finalMatch.genotypeMatch === false) {
+        result.push(`⚠️ ВНИМАНИЕ: Вариант требует указания генотипа`);
     }
     
-    // Показываем несоответствия, если есть
-    if (finalMatch.missing && finalMatch.missing.length > 0) {
-        result.push("");
-        result.push("⚠️ **НЕСООТВЕТСТВИЯ:**");
-        finalMatch.missing.forEach(missing => {
-            result.push(`• ❌ ${missing}`);
-        });
+    if (finalMatch.cirrhosisMatch === true) {
+        matches.push(`✅ Состояние печени соответствует`);
+    }
+    
+    if (finalMatch.transplantMatch === true) {
+        matches.push(`✅ Статус трансплантации соответствует`);
+    }
+    
+    if (matches.length > 0) {
+        result.push("**Соответствия:**");
+        matches.forEach(m => result.push(`• ${m}`));
     }
     
     result.push("");
     
-    // 7. ДРУГИЕ ПОДХОДЯЩИЕ ВАРИАНТЫ (только названия, без процентов и критериев)
+    // Другие варианты
     if (otherVariants.length > 0) {
         result.push("📋 **ДРУГИЕ ПОДХОДЯЩИЕ ВАРИАНТЫ:**");
-        result.push("");
-        
-        otherVariants.forEach((variant, idx) => {
+        otherVariants.slice(0, 3).forEach((variant, idx) => {
             result.push(`${idx + 1}. ${variant.variantName}`);
-            result.push("");
         });
-        
-        result.push("---");
         result.push("");
     }
-
-    // 8. РЕКОМЕНДАЦИЯ ИЗ БАЗЫ ЗНАНИЙ (для лучшего варианта)
+    
+    // Рекомендации
     result.push("💊 **РЕКОМЕНДАЦИЯ ИЗ БАЗЫ ЗНАНИЙ:**");
     result.push(`**Вариант:** ${finalMatch.variantName}`);
     result.push("");
-
+    
     const instruction = finalMatch.instruction;
     let hasSpecificRecommendations = false;
-
-    const treatmentPlan = instruction["План лечебных действий"];
-    let allTreatments = [];
-    let uniqueTreatments = [];
-    let goals = [];
-
-    if (treatmentPlan) {
-        allTreatments = extractUniversalTreatments(treatmentPlan);
-        uniqueTreatments = removeDuplicates(allTreatments);
-        
-        if (uniqueTreatments.length > 0) {
-            result.push("**Варианты лечения:**");
-            uniqueTreatments.forEach((treatment, idx) => {
-                let cleanTreatment = treatment
-                    .replace(/\*\*/g, '')
-                    .replace(/иное фиксация /g, '')
-                    .replace(/вариант лечения \d+ /g, '')
-                    .replace(/метод реабилитации /g, '')
-                    .replace(/методика /g, '')
-                    .replace(/упражнение /g, '')
-                    .trim();
-                
-                cleanTreatment = cleanTreatment.charAt(0).toUpperCase() + cleanTreatment.slice(1);
-                result.push(`${idx + 1}. ${cleanTreatment}`);
-            });
-            result.push("");
-            hasSpecificRecommendations = true;
-        }
-        
-        goals = extractGoals(treatmentPlan);
-        if (goals.length > 0) {
-            result.push("**Цели лечения:**");
-            goals.forEach((goal, idx) => {
-                let cleanGoal = goal
-                    .replace(/\*\*/g, '')
-                    .replace(/вариант лечения \d+ /g, '')
-                    .replace(/иное /g, '')
-                    .replace(/фиксация /g, 'Фиксация ')
-                    .trim();
-                
-                result.push(`${idx + 1}. ${cleanGoal}`);
-            });
-            result.push("");
-            hasSpecificRecommendations = true;
-        }
-        
-        const additionalInfo = extractAdditionalInfo(treatmentPlan);
-        if (additionalInfo.length > 0) {
-            result.push("**Дополнительная информация:**");
-            additionalInfo.forEach((info, idx) => {
-                result.push(`${idx + 1}. ${info}`);
-            });
-            result.push("");
-            hasSpecificRecommendations = true;
+    
+    // Извлекаем лечение
+    if (instruction) {
+        for (const instKey in instruction) {
+            const inst = instruction[instKey];
+            const treatmentPlan = inst["План лечебных действий"];
+            
+            if (treatmentPlan && treatmentPlan["вариант лечения"]) {
+                const treatments = extractUniversalTreatments(treatmentPlan);
+                if (treatments.length > 0) {
+                    result.push("**Варианты лечения:**");
+                    treatments.forEach((t, idx) => {
+                        const clean = t.replace(/\*\*/g, '').trim();
+                        result.push(`${idx + 1}. ${clean}`);
+                    });
+                    result.push("");
+                    hasSpecificRecommendations = true;
+                }
+            }
+            
+            const goals = extractGoals(treatmentPlan);
+            if (goals.length > 0) {
+                result.push("**Цели лечения:**");
+                goals.forEach((g, idx) => {
+                    result.push(`${idx + 1}. ${g}`);
+                });
+                result.push("");
+                hasSpecificRecommendations = true;
+            }
         }
     }
-
-    const specificRecommendations = extractSpecificRecommendations(instruction);
-    if (specificRecommendations.length > 0) {
-        result.push("📋 **КОНКРЕТНЫЕ РЕКОМЕНДАЦИИ:**");
-        specificRecommendations.forEach((rec, idx) => {
-            result.push(`${idx + 1}. ${rec}`);
-        });
-        result.push("");
-        hasSpecificRecommendations = true;
-    }
-
+    
     if (!hasSpecificRecommendations) {
         result.push("📋 **ОБЩИЕ РЕКОМЕНДАЦИИ:**");
         result.push("1. Выполнить назначенный план лечения");
         result.push("2. Соблюдать все врачебные рекомендации");
         result.push("3. Контролировать состояние в динамике");
-        result.push("4. При появлении побочных эффектов обратиться к врачу");
         result.push("");
     }
+    
+    return result.join("\n");
+}
 
-    // 9. СОХРАНЕНИЕ ДЛЯ ДЕТАЛЬНОГО АНАЛИЗА
-    window.patientDiagnoses = [patientDiagnosis].filter(d => d);
-    window.recommendations_by_diagnosis = {};
+// ===== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ =====
+
+function normalizePatientDataForHepatitis(patientData) {
+    const normalized = { ...patientData };
     
-    // Сохраняем все подходящие варианты для детального просмотра
-    const allRecommendations = [];
-    
-    if (finalMatch) {
-        const detailedTreatments = extractUniversalTreatments(finalMatch.instruction["План лечебных действий"]);
-        const detailedUniqueTreatments = removeDuplicates(detailedTreatments);
+    // Нормализуем значение цирроза
+    for (const [key, value] of Object.entries(patientData)) {
+        const keyLower = key.toLowerCase();
+        if (keyLower.includes('цирроз') || keyLower.includes('цп')) {
+            if (value === 'отсутствует' || value === 'нет' || value === false) {
+                normalized.hasCirrhosis = false;
+            } else if (value === 'есть' || value === 'да' || value === true) {
+                normalized.hasCirrhosis = true;
+            }
+        }
         
-        allRecommendations.push({
-            diagnosis: patientDiagnosis,
-            node_type: finalMatch.nodeType,
-            variant_name: finalMatch.variantName,
-            treatments: detailedUniqueTreatments.map(t => t.replace(/\*\*/g, '').trim()),
-            match_score: finalMatch.matchScore,
-            explanations: finalMatch.details || ["Общие критерии соответствия"],
-            missing_explanations: finalMatch.missing || [],
-            has_contradictions: finalMatch.matchScore < 70,
-            critical_mismatch: finalMatch.matchScore < 50,
-            is_best: true
-        });
+        // Нормализуем трансплантацию
+        if (keyLower.includes('трансплантац')) {
+            if (value === 'не проводилась' || value === 'нет' || value === false) {
+                normalized.hasTransplant = false;
+            } else if (value === 'проводилась' || value === 'да' || value === true) {
+                normalized.hasTransplant = true;
+            }
+        }
     }
     
-    // Добавляем остальные варианты
-    otherVariants.forEach(variant => {
-        const detailedTreatments = extractUniversalTreatments(variant.instruction["План лечебных действий"]);
-        const detailedUniqueTreatments = removeDuplicates(detailedTreatments);
-        
-        allRecommendations.push({
-            diagnosis: patientDiagnosis,
-            node_type: variant.nodeType,
-            variant_name: variant.variantName,
-            treatments: detailedUniqueTreatments.map(t => t.replace(/\*\*/g, '').trim()),
-            match_score: variant.matchScore,
-            explanations: variant.details || [],
-            missing_explanations: variant.missing || [],
-            has_contradictions: variant.matchScore < 70,
-            critical_mismatch: variant.matchScore < 50,
-            is_best: false
-        });
-    });
-    
-    window.recommendations_by_diagnosis[patientDiagnosis] = allRecommendations;
-    window.lastRecommendation = allRecommendations[0];
+    return normalized;
+}
 
-    console.log("=== ЗАВЕРШЕНИЕ generate_universal_explanation ===");
-    return result.join("\n");
+function findGenotypeInPatientDataAdvanced(patientData) {
+    // Список всех возможных полей для генотипа
+    const genotypeFields = [
+        'Анализ крови на гепатит С с определением генотипа_Результат',
+        'Генотип',
+        'Генотип вируса',
+        'Генотип HCV',
+        'Генотип гепатита С',
+        'Результат'
+    ];
+    
+    for (const field of genotypeFields) {
+        const value = patientData[field];
+        if (value) {
+            let val = Array.isArray(value) ? value[0] : value;
+            if (typeof val === 'string') {
+                const lower = val.toLowerCase().trim();
+                if (lower === '1a') return '1a';
+                if (lower === '1b') return '1b';
+                if (lower === '2') return '2';
+                if (lower === '3') return '3';
+                if (lower.includes('1a')) return '1a';
+                if (lower.includes('1b')) return '1b';
+            }
+        }
+    }
+    
+    return null;
+}
+
+function detectCirrhosis(patientData) {
+    // Проверяем все возможные поля
+    for (const [key, value] of Object.entries(patientData)) {
+        const keyLower = key.toLowerCase();
+        
+        if (keyLower.includes('цирроз') || keyLower.includes('цп')) {
+            if (value === 'отсутствует' || value === 'нет' || value === false || value === '') {
+                return false;
+            }
+            if (value === 'есть' || value === 'да' || value === true) {
+                return true;
+            }
+        }
+        
+        // Проверяем значение как строку
+        if (typeof value === 'string' && (value.toLowerCase().includes('цирроз') || value.toLowerCase().includes('цп'))) {
+            if (value.toLowerCase().includes('отсутствует') || value.toLowerCase().includes('нет')) {
+                return false;
+            }
+            return true;
+        }
+    }
+    
+    // По умолчанию считаем, что цирроза нет (если не указано иное)
+    return false;
+}
+
+function detectTransplant(patientData) {
+    for (const [key, value] of Object.entries(patientData)) {
+        const keyLower = key.toLowerCase();
+        
+        if (keyLower.includes('трансплантац')) {
+            if (value === 'не проводилась' || value === 'нет' || value === false || value === '') {
+                return false;
+            }
+            if (value === 'проводилась' || value === 'да' || value === true) {
+                return true;
+            }
+        }
+        
+        // Проверяем операции в прошлом
+        if (keyLower.includes('операции') || keyLower.includes('хирургическое')) {
+            if (typeof value === 'string' && value.toLowerCase().includes('трансплантац')) {
+                return true;
+            }
+            if (Array.isArray(value) && value.some(v => String(v).toLowerCase().includes('трансплантац'))) {
+                return true;
+            }
+        }
+    }
+    
+    return false;
+}
+
+function detectPVTExperience(patientData) {
+    for (const [key, value] of Object.entries(patientData)) {
+        const keyLower = key.toLowerCase();
+        
+        if (keyLower.includes('пвт') || keyLower.includes('противовирусн') || 
+            (keyLower.includes('опыт') && keyLower.includes('терапии'))) {
+            
+            if (value === 'отсутствует' || value === 'нет' || value === false) {
+                return false;
+            }
+            if (value === 'имеется' || value === 'да' || value === true) {
+                return true;
+            }
+            
+            if (Array.isArray(value)) {
+                const hasPositive = value.some(v => {
+                    const str = String(v).toLowerCase();
+                    return str.includes('был') || str.includes('проводилась') || str.includes('имеется');
+                });
+                if (hasPositive) return true;
+            }
+        }
+    }
+    
+    return false;
+}
+
+function checkGenotypeSpecificMatch(variantName, patientGenotype) {
+    const variantLower = variantName.toLowerCase();
+    
+    // Если в варианте не упоминается генотип - пропускаем (не мешает)
+    if (!variantLower.includes('генотип') && !variantLower.includes('genotype') &&
+        !variantLower.includes('1a') && !variantLower.includes('1b') && 
+        !variantLower.includes('2') && !variantLower.includes('3')) {
+        return null; // нейтрально
+    }
+    
+    // Если у пациента нет генотипа, но вариант требует его указания
+    if (!patientGenotype) {
+        return false; // не подходит
+    }
+    
+    // Проверяем совпадение
+    if (variantLower.includes(patientGenotype.toLowerCase())) {
+        return true; // точное совпадение
+    }
+    
+    // Специальные случаи
+    if (patientGenotype === '1b' && variantLower.includes('1b')) return true;
+    if (patientGenotype === '1a' && variantLower.includes('1a')) return true;
+    if (patientGenotype === '1' && (variantLower.includes('1a') || variantLower.includes('1b'))) return true;
+    
+    return false;
+}
+
+function checkCirrhosisSpecificMatch(variantName, hasCirrhosis) {
+    const variantLower = variantName.toLowerCase();
+    
+    // Если в варианте не упоминается цирроз
+    if (!variantLower.includes('цирроз') && !variantLower.includes('цп') && !variantLower.includes('без цп')) {
+        return null;
+    }
+    
+    // Проверяем наличие цирроза
+    const requiresCirrhosis = variantLower.includes('с цп') || variantLower.includes('с цирроз');
+    const requiresNoCirrhosis = variantLower.includes('без цп') || variantLower.includes('без цирроза');
+    
+    if (requiresCirrhosis && hasCirrhosis) return true;
+    if (requiresNoCirrhosis && !hasCirrhosis) return true;
+    
+    return false;
+}
+
+function checkTransplantSpecificMatch(variantName, hasTransplant) {
+    const variantLower = variantName.toLowerCase();
+    
+    if (!variantLower.includes('трансплантац')) return null;
+    
+    const requiresTransplant = variantLower.includes('после трансплантации') || variantLower.includes('с трансплантацией');
+    const requiresNoTransplant = variantLower.includes('без трансплантации') || variantLower.includes('не проводилась');
+    
+    if (requiresTransplant && hasTransplant) return true;
+    if (requiresNoTransplant && !hasTransplant) return true;
+    
+    return false;
+}
+
+function checkPVTSpecificMatch(variantName, hasPVTExperience) {
+    const variantLower = variantName.toLowerCase();
+    
+    if (!variantLower.includes('пвт') && !variantLower.includes('противовирусн') && !variantLower.includes('опыт')) {
+        return null;
+    }
+    
+    const requiresExperience = variantLower.includes('с опытом') || variantLower.includes('не ответивш');
+    const requiresNoExperience = variantLower.includes('без опыта') || variantLower.includes('наивн');
+    
+    if (requiresExperience && hasPVTExperience) return true;
+    if (requiresNoExperience && !hasPVTExperience) return true;
+    
+    return null;
 }
 // ДОБАВЬТЕ ЭТИ ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ:
 
@@ -616,37 +745,37 @@ function extractTreatmentsFromOption(option) {
 }
 
 // ИЗВЛЕКАЕТ ЦЕЛИ ЛЕЧЕНИЯ
-function extractGoals(treatmentPlan) {
-    const goals = [];
+// function extractGoals(treatmentPlan) {
+//     const goals = [];
     
-    if (!treatmentPlan || !treatmentPlan["Цель"]) {
-        return goals;
-    }
+//     if (!treatmentPlan || !treatmentPlan["Цель"]) {
+//         return goals;
+//     }
     
-    const goalData = treatmentPlan["Цель"];
+//     const goalData = treatmentPlan["Цель"];
     
-    for (const [goalKey, goalValue] of Object.entries(goalData)) {
-        if (!goalValue || typeof goalValue !== 'object') continue;
+//     for (const [goalKey, goalValue] of Object.entries(goalData)) {
+//         if (!goalValue || typeof goalValue !== 'object') continue;
         
-        for (const [action, actionData] of Object.entries(goalValue)) {
-            if (typeof actionData === 'object') {
-                for (const [subAction, subData] of Object.entries(actionData)) {
-                    if (Array.isArray(subData)) {
-                        subData.forEach(item => {
-                            goals.push(`${action} ${subAction} ${item}`);
-                        });
-                    } else if (typeof subData === 'string') {
-                        goals.push(`${action} ${subAction} ${subData}`);
-                    }
-                }
-            } else if (typeof actionData === 'string') {
-                goals.push(`${action} ${actionData}`);
-            }
-        }
-    }
+//         for (const [action, actionData] of Object.entries(goalValue)) {
+//             if (typeof actionData === 'object') {
+//                 for (const [subAction, subData] of Object.entries(actionData)) {
+//                     if (Array.isArray(subData)) {
+//                         subData.forEach(item => {
+//                             goals.push(`${action} ${subAction} ${item}`);
+//                         });
+//                     } else if (typeof subData === 'string') {
+//                         goals.push(`${action} ${subAction} ${subData}`);
+//                     }
+//                 }
+//             } else if (typeof actionData === 'string') {
+//                 goals.push(`${action} ${actionData}`);
+//             }
+//         }
+//     }
     
-    return goals;
-}
+//     return goals;
+// }
 
 // ИЗВЛЕКАЕТ ДОПОЛНИТЕЛЬНУЮ ИНФОРМАЦИЮ
 function extractAdditionalInfo(treatmentPlan) {
@@ -1059,39 +1188,119 @@ function countCriteria(variantName) {
 
 // ДОБАВЬТЕ эти вспомогательные функции:
 
-function extractGoals(goalData) {
+// ИЗВЛЕКАЕТ ЦЕЛИ ЛЕЧЕНИЯ (ГАРАНТИРОВАННО РАБОТАЕТ)
+function extractGoals(treatmentPlan) {
     const goals = [];
+    const seen = new Set();
     
-    if (!goalData || typeof goalData !== 'object') {
+    if (!treatmentPlan) {
+        console.log("❌ extractGoals: treatmentPlan отсутствует");
         return goals;
     }
     
-    function extractFromObject(obj, prefix = "") {
-        if (!obj || typeof obj !== 'object') return;
-        
-        for (const [key, value] of Object.entries(obj)) {
-            const newPrefix = prefix ? `${prefix} ${key}` : key;
-            
-            if (typeof value === 'string' && value.trim()) {
-                goals.push(`${newPrefix}: ${value}`);
-            } else if (typeof value === 'object') {
-                if (Array.isArray(value)) {
-                    value.forEach(item => {
-                        if (typeof item === 'string') {
-                            goals.push(`${newPrefix}: ${item}`);
-                        }
-                    });
-                } else {
-                    extractFromObject(value, newPrefix);
-                }
+    // Прямой доступ к Цель
+    let goalData = treatmentPlan["Цель"];
+    
+    // Если нет Цель, ищем в других местах
+    if (!goalData && treatmentPlan["вариант лечения"]) {
+        // Ищем Цель внутри вариантов лечения
+        for (const optionKey in treatmentPlan["вариант лечения"]) {
+            const option = treatmentPlan["вариант лечения"][optionKey];
+            if (option && option["Цель"]) {
+                goalData = option["Цель"];
+                break;
             }
         }
     }
     
-    extractFromObject(goalData);
-    return goals;
+    if (!goalData) {
+        console.log("❌ extractGoals: Цель не найдена");
+        return goals;
+    }
+    
+    console.log("🔍 extractGoals: найдена Цель", goalData);
+    
+    // Функция для извлечения текста из любой структуры
+    function extractText(obj) {
+        if (!obj || typeof obj !== 'object') return;
+        
+        for (const [key, value] of Object.entries(obj)) {
+            // Пропускаем технические ключи
+            if (key === "единица измерения" || key === "нижняя граница" || key === "верхняя граница") {
+                continue;
+            }
+            
+            // Если это строка и не слишком короткая
+            if (typeof value === 'string' && value.trim() && value.trim().length > 5) {
+                let cleanValue = value.trim();
+                
+                // Очищаем от технического мусора
+                cleanValue = cleanValue
+                    .replace(/вариант лечения \d+ /g, '')
+                    .replace(/метод реабилитации /g, '')
+                    .replace(/домашняя реабилитация по программе периода иммобилизации \(врач ФРМ\/ЛФК составляет программу реабилитации\) /g, '')
+                    .replace(/методика /g, '')
+                    .replace(/пошаговый алгоритм назначения /g, '')
+                    .replace(/этап \d+ /g, '')
+                    .replace(/упражнение: /g, '')
+                    .replace(/Наблюдение /g, '')
+                    .trim();
+                
+                if (cleanValue && cleanValue.length > 5) {
+                    const keyNormalized = cleanValue.toLowerCase().replace(/\s+/g, ' ');
+                    if (!seen.has(keyNormalized)) {
+                        seen.add(keyNormalized);
+                        goals.push(cleanValue);
+                    }
+                }
+            }
+            // Если это массив
+            else if (Array.isArray(value)) {
+                value.forEach(item => {
+                    if (typeof item === 'string' && item.trim() && item.trim().length > 5) {
+                        let cleanValue = item.trim()
+                            .replace(/вариант лечения \d+ /g, '')
+                            .replace(/метод реабилитации /g, '')
+                            .replace(/домашняя реабилитация по программе периода иммобилизации \(врач ФРМ\/ЛФК составляет программу реабилитации\) /g, '')
+                            .replace(/методика /g, '')
+                            .replace(/пошаговый алгоритм назначения /g, '')
+                            .replace(/этап \d+ /g, '')
+                            .replace(/упражнение: /g, '')
+                            .trim();
+                        if (cleanValue && cleanValue.length > 5) {
+                            const keyNormalized = cleanValue.toLowerCase().replace(/\s+/g, ' ');
+                            if (!seen.has(keyNormalized)) {
+                                seen.add(keyNormalized);
+                                goals.push(cleanValue);
+                            }
+                        }
+                    }
+                });
+            }
+            // Рекурсивный обход
+            else if (typeof value === 'object' && value !== null) {
+                extractText(value);
+            }
+        }
+    }
+    
+    extractText(goalData);
+    
+    // Форматируем результаты
+    const formattedGoals = goals.map(goal => {
+        // Убираем двоеточия и лишние пробелы
+        let cleaned = goal.replace(/:\s*$/, '').trim();
+        // Делаем первую букву заглавной
+        if (cleaned.length > 0) {
+            return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+        }
+        return cleaned;
+    });
+    
+    console.log(`📊 extractGoals: найдено ${formattedGoals.length} целей:`, formattedGoals);
+    
+    return formattedGoals;
 }
-
 function extractSpecificRecommendations(instruction) {
     const recommendations = [];
     
@@ -1871,6 +2080,10 @@ function checkValueWithSynonyms(parentName, charName, patientValue, allowedValue
 // УЛУЧШЕННАЯ ФУНКЦИЯ ПОИСКА ПРОСТОГО ЗНАЧЕНИЯ
 // ============================================
 function findPatientValueSimple(fieldName, patientData) {
+      // ЗАЩИТА ОТ МАССИВОВ В САМОМ НАЧАЛЕ
+    if (Array.isArray(patientData)) {
+        patientData = patientData[0] || {};
+    }
     if (!fieldName) return null;
     
     console.log(`🔍 findPatientValueSimple: ищем "${fieldName}"`);
@@ -2027,7 +2240,7 @@ function countCriteriaNormalized(variantName) {
 function evaluateSpecificCriteria(variantName, patientData) {
     let bonus = 0;
     
-    // Для гепатита - проверка генотипа
+    // ПРОВЕРКА ГЕНОТИПА ДЛЯ ГЕПАТИТА
     if (variantName.toLowerCase().includes('гепатит') || variantName.toLowerCase().includes('hcv')) {
         const patientGenotype = findGenotypeInPatientData(patientData);
         const variantGenotype = getGenotypeFromVariantName(variantName);
@@ -2035,22 +2248,36 @@ function evaluateSpecificCriteria(variantName, patientData) {
         if (patientGenotype && variantGenotype) {
             if (patientGenotype === variantGenotype) {
                 bonus += 25;
+                console.log(`✅ Совпадение генотипа: ${patientGenotype} = ${variantGenotype} (+25)`);
             } else {
                 bonus -= 40;
+                console.log(`❌ Несовпадение генотипа: ${patientGenotype} ≠ ${variantGenotype} (-40)`);
             }
         }
     }
     
-    // Для мигрени - проверка выраженности
+    // ПРОВЕРКА ВЫРАЖЕННОСТИ ДЛЯ МИГРЕНИ — ИСПРАВЛЕНА
     if (variantName.toLowerCase().includes('мигрень')) {
-        const patientSeverity = patientData["Приступ мигрени"] || 
-                               patientData["Выраженность"] || 
-                               patientData["Головная боль"];
+        let patientSeverity = patientData["Приступ мигрени"] || patientData["Выраженность"];
+        
+        // ЗАЩИТА: если это массив, берём первый элемент
+        if (Array.isArray(patientSeverity)) {
+            patientSeverity = patientSeverity[0];
+        }
+        
+        // ЗАЩИТА: если это объект, пытаемся извлечь значение
+        if (patientSeverity && typeof patientSeverity === 'object') {
+            patientSeverity = patientSeverity["Значение"] || Object.values(patientSeverity)[0];
+        }
+        
         const variantSeverity = getSeverityFromVariantName(variantName);
         
         if (patientSeverity && variantSeverity) {
-            if (patientSeverity.toLowerCase().includes(variantSeverity)) {
+            // ЗАЩИТА: преобразуем в строку перед вызовом toLowerCase()
+            const severityStr = String(patientSeverity).toLowerCase();
+            if (severityStr.includes(variantSeverity)) {
                 bonus += 20;
+                console.log(`✅ Совпадение выраженности мигрени: ${patientSeverity} (+20)`);
             }
         }
     }
@@ -3336,40 +3563,40 @@ function countCriteriaNormalized(variantName) {
     return Math.min(15, criteriaCount);
 }
 
-function evaluateSpecificCriteria(variantName, patientData) {
-    let bonus = 0;
+// function evaluateSpecificCriteria(variantName, patientData) {
+//     let bonus = 0;
     
-    // ПРОВЕРКА ГЕНОТИПА ДЛЯ ГЕПАТИТА
-    if (variantName.toLowerCase().includes('гепатит') || variantName.toLowerCase().includes('hcv')) {
-        const patientGenotype = findGenotypeInPatientData(patientData);
-        const variantGenotype = getGenotypeFromVariantName(variantName);
+//     // ПРОВЕРКА ГЕНОТИПА ДЛЯ ГЕПАТИТА
+//     if (variantName.toLowerCase().includes('гепатит') || variantName.toLowerCase().includes('hcv')) {
+//         const patientGenotype = findGenotypeInPatientData(patientData);
+//         const variantGenotype = getGenotypeFromVariantName(variantName);
         
-        if (patientGenotype && variantGenotype) {
-            if (patientGenotype === variantGenotype) {
-                bonus += 25; // Большой бонус за точное совпадение генотипа
-                console.log(`✅ Совпадение генотипа: ${patientGenotype} = ${variantGenotype} (+25)`);
-            } else {
-                bonus -= 40; // Большой штраф за несовпадение
-                console.log(`❌ Несовпадение генотипа: ${patientGenotype} ≠ ${variantGenotype} (-40)`);
-            }
-        }
-    }
+//         if (patientGenotype && variantGenotype) {
+//             if (patientGenotype === variantGenotype) {
+//                 bonus += 25; // Большой бонус за точное совпадение генотипа
+//                 console.log(`✅ Совпадение генотипа: ${patientGenotype} = ${variantGenotype} (+25)`);
+//             } else {
+//                 bonus -= 40; // Большой штраф за несовпадение
+//                 console.log(`❌ Несовпадение генотипа: ${patientGenotype} ≠ ${variantGenotype} (-40)`);
+//             }
+//         }
+//     }
     
-    // ПРОВЕРКА ВЫРАЖЕННОСТИ ДЛЯ МИГРЕНИ
-    if (variantName.toLowerCase().includes('мигрень')) {
-        const patientSeverity = patientData["Приступ мигрени"] || patientData["Выраженность"];
-        const variantSeverity = getSeverityFromVariantName(variantName);
+//     // ПРОВЕРКА ВЫРАЖЕННОСТИ ДЛЯ МИГРЕНИ
+//     if (variantName.toLowerCase().includes('мигрень')) {
+//         const patientSeverity = patientData["Приступ мигрени"] || patientData["Выраженность"];
+//         const variantSeverity = getSeverityFromVariantName(variantName);
         
-        if (patientSeverity && variantSeverity) {
-            if (patientSeverity.toLowerCase().includes(variantSeverity)) {
-                bonus += 20;
-                console.log(`✅ Совпадение выраженности мигрени: ${patientSeverity} (+20)`);
-            }
-        }
-    }
+//         if (patientSeverity && variantSeverity) {
+//             if (patientSeverity.toLowerCase().includes(variantSeverity)) {
+//                 bonus += 20;
+//                 console.log(`✅ Совпадение выраженности мигрени: ${patientSeverity} (+20)`);
+//             }
+//         }
+//     }
     
-    return bonus;
-}
+//     return bonus;
+// }
 
 function extract_rehabilitation_treatment(rehab_data) {
     const treatments = [];
@@ -4189,6 +4416,7 @@ function ultimateCheckIfPatientHasField(fieldName, patientData) {
 
 // УНИВЕРСАЛЬНАЯ ФУНКЦИЯ ДЛЯ ИЗВЛЕЧЕНИЯ НЕДОСТАЮЩИХ ПОЛЕЙ
 function extractMissingFieldsFromAnalysis(explanationText, patientData) {
+    
     const missingFields = [];
     
     if (!explanationText || !window.knowledgeBase) return missingFields;
