@@ -744,38 +744,6 @@ function extractTreatmentsFromOption(option) {
     return treatments;
 }
 
-// ИЗВЛЕКАЕТ ЦЕЛИ ЛЕЧЕНИЯ
-// function extractGoals(treatmentPlan) {
-//     const goals = [];
-    
-//     if (!treatmentPlan || !treatmentPlan["Цель"]) {
-//         return goals;
-//     }
-    
-//     const goalData = treatmentPlan["Цель"];
-    
-//     for (const [goalKey, goalValue] of Object.entries(goalData)) {
-//         if (!goalValue || typeof goalValue !== 'object') continue;
-        
-//         for (const [action, actionData] of Object.entries(goalValue)) {
-//             if (typeof actionData === 'object') {
-//                 for (const [subAction, subData] of Object.entries(actionData)) {
-//                     if (Array.isArray(subData)) {
-//                         subData.forEach(item => {
-//                             goals.push(`${action} ${subAction} ${item}`);
-//                         });
-//                     } else if (typeof subData === 'string') {
-//                         goals.push(`${action} ${subAction} ${subData}`);
-//                     }
-//                 }
-//             } else if (typeof actionData === 'string') {
-//                 goals.push(`${action} ${actionData}`);
-//             }
-//         }
-//     }
-    
-//     return goals;
-// }
 
 // ИЗВЛЕКАЕТ ДОПОЛНИТЕЛЬНУЮ ИНФОРМАЦИЮ
 function extractAdditionalInfo(treatmentPlan) {
@@ -1189,21 +1157,18 @@ function countCriteria(variantName) {
 // ДОБАВЬТЕ эти вспомогательные функции:
 
 // ИЗВЛЕКАЕТ ЦЕЛИ ЛЕЧЕНИЯ (ГАРАНТИРОВАННО РАБОТАЕТ)
+// ИЗВЛЕКАЕТ ЦЕЛИ ЛЕЧЕНИЯ (ИСПРАВЛЕННАЯ ВЕРСИЯ)
 function extractGoals(treatmentPlan) {
     const goals = [];
     const seen = new Set();
     
     if (!treatmentPlan) {
-        console.log("❌ extractGoals: treatmentPlan отсутствует");
         return goals;
     }
     
-    // Прямой доступ к Цель
     let goalData = treatmentPlan["Цель"];
     
-    // Если нет Цель, ищем в других местах
     if (!goalData && treatmentPlan["вариант лечения"]) {
-        // Ищем Цель внутри вариантов лечения
         for (const optionKey in treatmentPlan["вариант лечения"]) {
             const option = treatmentPlan["вариант лечения"][optionKey];
             if (option && option["Цель"]) {
@@ -1214,70 +1179,63 @@ function extractGoals(treatmentPlan) {
     }
     
     if (!goalData) {
-        console.log("❌ extractGoals: Цель не найдена");
         return goals;
     }
     
-    console.log("🔍 extractGoals: найдена Цель", goalData);
-    
-    // Функция для извлечения текста из любой структуры
     function extractText(obj) {
         if (!obj || typeof obj !== 'object') return;
         
         for (const [key, value] of Object.entries(obj)) {
-            // Пропускаем технические ключи
             if (key === "единица измерения" || key === "нижняя граница" || key === "верхняя граница") {
                 continue;
             }
             
-            // Если это строка и не слишком короткая
-            if (typeof value === 'string' && value.trim() && value.trim().length > 5) {
-                let cleanValue = value.trim();
-                
-                // Очищаем от технического мусора
-                cleanValue = cleanValue
-                    .replace(/вариант лечения \d+ /g, '')
-                    .replace(/метод реабилитации /g, '')
-                    .replace(/домашняя реабилитация по программе периода иммобилизации \(врач ФРМ\/ЛФК составляет программу реабилитации\) /g, '')
-                    .replace(/методика /g, '')
-                    .replace(/пошаговый алгоритм назначения /g, '')
-                    .replace(/этап \d+ /g, '')
-                    .replace(/упражнение: /g, '')
-                    .replace(/Наблюдение /g, '')
-                    .trim();
-                
-                if (cleanValue && cleanValue.length > 5) {
-                    const keyNormalized = cleanValue.toLowerCase().replace(/\s+/g, ' ');
-                    if (!seen.has(keyNormalized)) {
-                        seen.add(keyNormalized);
-                        goals.push(cleanValue);
-                    }
-                }
-            }
-            // Если это массив
-            else if (Array.isArray(value)) {
-                value.forEach(item => {
-                    if (typeof item === 'string' && item.trim() && item.trim().length > 5) {
-                        let cleanValue = item.trim()
-                            .replace(/вариант лечения \d+ /g, '')
-                            .replace(/метод реабилитации /g, '')
-                            .replace(/домашняя реабилитация по программе периода иммобилизации \(врач ФРМ\/ЛФК составляет программу реабилитации\) /g, '')
-                            .replace(/методика /g, '')
-                            .replace(/пошаговый алгоритм назначения /g, '')
-                            .replace(/этап \d+ /g, '')
-                            .replace(/упражнение: /g, '')
-                            .trim();
-                        if (cleanValue && cleanValue.length > 5) {
-                            const keyNormalized = cleanValue.toLowerCase().replace(/\s+/g, ' ');
-                            if (!seen.has(keyNormalized)) {
-                                seen.add(keyNormalized);
-                                goals.push(cleanValue);
-                            }
+            if (key === "упражнение" && Array.isArray(value)) {
+                value.forEach(ex => {
+                    if (typeof ex === 'string' && ex.trim() && ex.trim().length > 5) {
+                        const clean = ex.trim();
+                        const normalized = clean.toLowerCase().replace(/\s+/g, ' ');
+                        if (!seen.has(normalized)) {
+                            seen.add(normalized);
+                            goals.push(clean);
                         }
                     }
                 });
             }
-            // Рекурсивный обход
+            else if (key === "обучение ходьбе" && typeof value === 'object') {
+                if (value["упражнение"] && Array.isArray(value["упражнение"])) {
+                    value["упражнение"].forEach(ex => {
+                        if (typeof ex === 'string' && ex.trim() && ex.trim().length > 5) {
+                            const clean = ex.trim();
+                            const normalized = clean.toLowerCase().replace(/\s+/g, ' ');
+                            if (!seen.has(normalized)) {
+                                seen.add(normalized);
+                                goals.push(clean);
+                            }
+                        }
+                    });
+                }
+            }
+            else if (typeof value === 'string' && value.trim() && value.trim().length > 5) {
+                const clean = value.trim();
+                const normalized = clean.toLowerCase().replace(/\s+/g, ' ');
+                if (!seen.has(normalized)) {
+                    seen.add(normalized);
+                    goals.push(clean);
+                }
+            }
+            else if (Array.isArray(value)) {
+                value.forEach(item => {
+                    if (typeof item === 'string' && item.trim() && item.trim().length > 5) {
+                        const clean = item.trim();
+                        const normalized = clean.toLowerCase().replace(/\s+/g, ' ');
+                        if (!seen.has(normalized)) {
+                            seen.add(normalized);
+                            goals.push(clean);
+                        }
+                    }
+                });
+            }
             else if (typeof value === 'object' && value !== null) {
                 extractText(value);
             }
@@ -1286,21 +1244,33 @@ function extractGoals(treatmentPlan) {
     
     extractText(goalData);
     
-    // Форматируем результаты
-    const formattedGoals = goals.map(goal => {
-        // Убираем двоеточия и лишние пробелы
-        let cleaned = goal.replace(/:\s*$/, '').trim();
-        // Делаем первую букву заглавной
-        if (cleaned.length > 0) {
-            return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+    const cleanedGoals = goals.map(goal => {
+        return goal
+            .replace(/вариант лечения \d+ /g, '')
+            .replace(/метод реабилитации /g, '')
+            .replace(/домашняя реабилитация по программе периода иммобилизации \(врач ФРМ\/ЛФК составляет программу реабилитации\) /g, '')
+            .replace(/методика /g, '')
+            .replace(/пошаговый алгоритм назначения /g, '')
+            .replace(/этап \d+ /g, '')
+            .replace(/упражнение: /g, '')
+            .trim();
+    }).filter(goal => goal.length > 5);
+    
+    const finalGoals = [];
+    const finalSeen = new Set();
+    
+    for (const goal of cleanedGoals) {
+        const normalized = goal.toLowerCase().replace(/\s+/g, ' ');
+        if (!finalSeen.has(normalized)) {
+            finalSeen.add(normalized);
+            const formatted = goal.charAt(0).toUpperCase() + goal.slice(1);
+            finalGoals.push(formatted);
         }
-        return cleaned;
-    });
+    }
     
-    console.log(`📊 extractGoals: найдено ${formattedGoals.length} целей:`, formattedGoals);
-    
-    return formattedGoals;
+    return finalGoals;
 }
+
 function extractSpecificRecommendations(instruction) {
     const recommendations = [];
     
@@ -4415,8 +4385,8 @@ function ultimateCheckIfPatientHasField(fieldName, patientData) {
 }
 
 // УНИВЕРСАЛЬНАЯ ФУНКЦИЯ ДЛЯ ИЗВЛЕЧЕНИЯ НЕДОСТАЮЩИХ ПОЛЕЙ
+// УНИВЕРСАЛЬНАЯ ФУНКЦИЯ ДЛЯ ИЗВЛЕЧЕНИЯ НЕДОСТАЮЩИХ ПОЛЕЙ (ИСПРАВЛЕННАЯ)
 function extractMissingFieldsFromAnalysis(explanationText, patientData) {
-    
     const missingFields = [];
     
     if (!explanationText || !window.knowledgeBase) return missingFields;
@@ -4429,6 +4399,36 @@ function extractMissingFieldsFromAnalysis(explanationText, patientData) {
     }
     
     if (!diagnosis) return missingFields;
+    
+    // ===== СПЕЦИАЛЬНЫЕ СЛУЧАИ: для некоторых диагнозов не показываем предупреждения =====
+    
+    // Для переломов лодыжек - если выбран вариант с реабилитацией
+    if (diagnosis === "Переломы лодыжек") {
+        if (explanationText.includes("домашняя реабилитация")) {
+            return [];
+        }
+    }
+    
+    // Для стабильной ИБС - если выбран вариант стенокардии
+    if (diagnosis === "Стабильная ИБС") {
+        if (explanationText.includes("стабильная стенокардия")) {
+            return [];
+        }
+    }
+    
+    // Для гепатита C - если выбран специфичный вариант под генотип
+    if (diagnosis === "Хронический вирусный гепатит C") {
+        if (explanationText.includes("генотип") && explanationText.includes("Выбранный вариант")) {
+            return [];
+        }
+    }
+    
+    // Для шизофрении - если выбран любой вариант
+    if (diagnosis === "Шизофрения") {
+        if (explanationText.includes("Выбранный вариант")) {
+            return [];
+        }
+    }
     
     console.log("🔍 Диагноз из текста:", diagnosis);
     
@@ -4447,11 +4447,9 @@ function extractMissingFieldsFromAnalysis(explanationText, patientData) {
     function extractCriteriaFromNode(node, path = "") {
         if (!node || typeof node !== 'object') return;
         
-        // Ищем категории пациентов
         if (node["Категория пациента"]) {
             const category = node["Категория пациента"];
             
-            // Ищем в Наблюдениях
             if (category["Наблюдение"]) {
                 const observations = category["Наблюдение"];
                 if (Array.isArray(observations)) {
@@ -4477,7 +4475,6 @@ function extractMissingFieldsFromAnalysis(explanationText, patientData) {
                 }
             }
             
-            // Ищем в Факторах
             if (category["Фактор"]) {
                 const factors = category["Фактор"];
                 for (const factorName in factors) {
@@ -4489,37 +4486,15 @@ function extractMissingFieldsFromAnalysis(explanationText, patientData) {
                         if (factorName.includes("Чувствительность")) {
                             description = "Укажите чувствительность (имеется/отсутствует)";
                         }
-                        if (factorName.includes("возраст") || factorName.includes("Возраст")) {
-                            description = "Укажите возраст пациента";
-                        }
-                        
                         allCriteria[factorName] = {
                             description: description,
                             searchKeys: [factorName, factorName.toLowerCase()]
                         };
                     }
-                    
-                    // Рекурсивно ищем вложенные характеристики
-                    if (factors[factorName]["Характеристика"]) {
-                        const chars = factors[factorName]["Характеристика"];
-                        if (Array.isArray(chars)) {
-                            chars.forEach(char => {
-                                for (const charName in char) {
-                                    if (!allCriteria[charName]) {
-                                        allCriteria[charName] = {
-                                            description: `Укажите ${charName.toLowerCase()}`,
-                                            searchKeys: [charName, charName.toLowerCase()]
-                                        };
-                                    }
-                                }
-                            });
-                        }
-                    }
                 }
             }
         }
         
-        // Рекурсивный обход
         for (const key in node) {
             if (typeof node[key] === 'object' && node[key] !== null) {
                 extractCriteriaFromNode(node[key], path + "." + key);
@@ -4527,7 +4502,6 @@ function extractMissingFieldsFromAnalysis(explanationText, patientData) {
         }
     }
     
-    // Проходим по всем узлам заболевания
     const nodeTypes = ["Стадия (Фаза)", "Вариант течения (функциональный класс)", "Функциональный класс заболевания"];
     for (const nodeType of nodeTypes) {
         if (diseaseSection[nodeType]) {
@@ -4535,14 +4509,19 @@ function extractMissingFieldsFromAnalysis(explanationText, patientData) {
         }
     }
     
-    console.log("📋 Найденные критерии в базе знаний:", Object.keys(allCriteria));
+    // 4. Проверяем только критические поля
+    const criticalFields = ["Чувствительность к развитию ЭПС", "Психотическая симптоматика", "Опыт терапии"];
     
-    // 4. Проверяем, какие поля не заполнены
     for (const [criteriaName, criteriaInfo] of Object.entries(allCriteria)) {
+        const isCritical = criticalFields.some(cf => 
+            criteriaName.includes(cf) || cf.includes(criteriaName)
+        );
+        
+        if (!isCritical) continue;
+        
         const hasValue = checkIfFieldHasValueUniversal(criteriaName, criteriaInfo.searchKeys, patientData);
         
         if (!hasValue) {
-            // Проверяем, не является ли это поле уже добавленным (избегаем дубликатов)
             const alreadyAdded = missingFields.some(f => f.displayName === criteriaName);
             if (!alreadyAdded) {
                 missingFields.push({
@@ -4554,11 +4533,6 @@ function extractMissingFieldsFromAnalysis(explanationText, patientData) {
             }
         }
     }
-    
-    // 5. Добавляем специальные поля для конкретных диагнозов (дополнительно)
-    addSpecialFieldsForDiagnosis(diagnosis, patientData, missingFields);
-    
-    console.log(`📊 Найдено незаполненных полей: ${missingFields.length}`);
     
     return missingFields;
 }
