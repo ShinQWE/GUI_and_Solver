@@ -141,27 +141,11 @@ function generate_universal_explanation(patient_data, knowledge_base) {
 
     const diseaseSection = diseases[patientDiagnosis];
     
-    // ===== НОВАЯ ЧАСТЬ: НОРМАЛИЗАЦИЯ ДАННЫХ ПАЦИЕНТА =====
-    const normalizedPatientData = normalizePatientDataForHepatitis(patient_data);
-    console.log("📊 Нормализованные данные пациента:", normalizedPatientData);
-    
-    // ===== НОВАЯ ЧАСТЬ: ПОИСК ГЕНОТИПА =====
     const patientGenotype = findGenotypeInPatientDataAdvanced(patient_data);
-    console.log("🧬 Генотип пациента:", patientGenotype);
-    
-    // ===== НОВАЯ ЧАСТЬ: ОПРЕДЕЛЕНИЕ НАЛИЧИЯ ЦИРРОЗА =====
     const hasCirrhosis = detectCirrhosis(patient_data);
-    console.log("🏥 Цирроз печени:", hasCirrhosis ? "есть" : "отсутствует");
-    
-    // ===== НОВАЯ ЧАСТЬ: ОПРЕДЕЛЕНИЕ ТРАНСПЛАНТАЦИИ =====
     const hasTransplant = detectTransplant(patient_data);
-    console.log("🩺 Трансплантация печени:", hasTransplant ? "была" : "не было");
-    
-    // ===== НОВАЯ ЧАСТЬ: ОПЫТ ПВТ =====
     const hasPVTExperience = detectPVTExperience(patient_data);
-    console.log("💊 Опыт ПВТ:", hasPVTExperience);
     
-    // ===== НОВАЯ ЧАСТЬ: ИЩЕМ ВАРИАНТЫ С УЧЕТОМ ЭТИХ ДАННЫХ =====
     let allCheckedVariants = [];
     let variantsWithoutCategory = [];
     
@@ -178,48 +162,28 @@ function generate_universal_explanation(patient_data, knowledge_base) {
         const nodeData = diseaseSection[nodeType];
         if (!nodeData) continue;
         
-        console.log(`\n🔍 АНАЛИЗ УЗЛА: "${nodeType}" (приоритет ${priority})`);
-        
         for (const [variantName, variantData] of Object.entries(nodeData)) {
-            console.log(`\n🔎 ПРОВЕРЯЕМ ВАРИАНТ: "${variantName}"`);
-            
             if (!variantData["Инструкция"]) continue;
             
-            // ОСОБАЯ ПРОВЕРКА ДЛЯ ГЕПАТИТА C - по генотипу
             const genotypeSpecificMatch = checkGenotypeSpecificMatch(variantName, patientGenotype);
-            
-            // ОСОБАЯ ПРОВЕРКА ДЛЯ ЦИРРОЗА
             const cirrhosisMatch = checkCirrhosisSpecificMatch(variantName, hasCirrhosis);
-            
-            // ОСОБАЯ ПРОВЕРКА ДЛЯ ТРАНСПЛАНТАЦИИ
             const transplantMatch = checkTransplantSpecificMatch(variantName, hasTransplant);
-            
-            // ОСОБАЯ ПРОВЕРКА ДЛЯ ОПЫТА ПВТ
             const pvtMatch = checkPVTSpecificMatch(variantName, hasPVTExperience);
             
-            // Если есть специфические несоответствия - пропускаем вариант
-            if (genotypeSpecificMatch === false || 
-                cirrhosisMatch === false || 
-                transplantMatch === false || 
-                pvtMatch === false) {
-                console.log(`❌ Вариант "${variantName}" исключен из-за несоответствия специфическим критериям`);
+            if (genotypeSpecificMatch === false || cirrhosisMatch === false || 
+                transplantMatch === false || pvtMatch === false) {
                 continue;
             }
             
-            // Если специфическое совпадение (например, точное совпадение генотипа) - большой бонус
             let matchScore = 50;
             if (genotypeSpecificMatch === true) matchScore += 30;
             if (cirrhosisMatch === true) matchScore += 20;
             if (transplantMatch === true) matchScore += 20;
             if (pvtMatch === true) matchScore += 15;
-            
-            // Добавляем приоритет узла
             matchScore += priority * 5;
             
             allCheckedVariants.push({
-                variantName,
-                nodeType,
-                priority,
+                variantName, nodeType, priority,
                 instruction: variantData["Инструкция"],
                 matchScore: matchScore,
                 genotypeMatch: genotypeSpecificMatch,
@@ -230,54 +194,10 @@ function generate_universal_explanation(patient_data, knowledge_base) {
         }
     }
     
-    // Добавляем варианты, у которых нет категории
-    for (const nodeTypeInfo of nodeTypes) {
-        const nodeData = diseaseSection[nodeTypeInfo.key];
-        if (!nodeData) continue;
-        
-        for (const [variantName, variantData] of Object.entries(nodeData)) {
-            if (!variantData["Инструкция"]) continue;
-            
-            // Проверяем, есть ли у этого варианта категория
-            let hasCategory = false;
-            for (const instKey in variantData["Инструкция"]) {
-                if (variantData["Инструкция"][instKey]["Категория пациента"]) {
-                    hasCategory = true;
-                    break;
-                }
-            }
-            
-            if (!hasCategory) {
-                const alreadyAdded = allCheckedVariants.some(v => v.variantName === variantName);
-                if (!alreadyAdded) {
-                    variantsWithoutCategory.push({
-                        variantName,
-                        nodeType: nodeTypeInfo.key,
-                        priority: nodeTypeInfo.priority,
-                        instruction: variantData["Инструкция"],
-                        matchScore: 50 + nodeTypeInfo.priority * 5
-                    });
-                }
-            }
-        }
-    }
-    
-    // Сортируем все варианты по скору
     allCheckedVariants.sort((a, b) => b.matchScore - a.matchScore);
-    variantsWithoutCategory.sort((a, b) => b.matchScore - a.matchScore);
     
-    // Выбираем лучший вариант
-    let finalMatch = null;
-    let otherVariants = [];
-    
-    if (allCheckedVariants.length > 0) {
-        finalMatch = allCheckedVariants[0];
-        otherVariants = allCheckedVariants.slice(1).filter(v => v.matchScore >= 50);
-        console.log(`✅ Выбран вариант: "${finalMatch.variantName}" (${finalMatch.matchScore}%)`);
-    } else if (variantsWithoutCategory.length > 0) {
-        finalMatch = variantsWithoutCategory[0];
-        console.log(`⚠️ Использован вариант без категории: "${finalMatch.variantName}"`);
-    }
+    let finalMatch = allCheckedVariants[0] || null;
+    let otherVariants = allCheckedVariants.slice(1).filter(v => v.matchScore >= 50);
     
     if (!finalMatch) {
         result.push("❌ **НЕ НАЙДЕНО ПОДХОДЯЩЕГО ВАРИАНТА**");
@@ -288,18 +208,13 @@ function generate_universal_explanation(patient_data, knowledge_base) {
     result.push(`👤 **${finalMatch.nodeType || "КАТЕГОРИЯ ПАЦИЕНТА"} (из базы знаний):**`);
     result.push(`**Выбранный вариант:** ${finalMatch.variantName}`);
     
-    // Показываем соответствия
     const matches = [];
     if (finalMatch.genotypeMatch === true && patientGenotype) {
         matches.push(`✅ Генотип ${patientGenotype} соответствует`);
-    } else if (finalMatch.genotypeMatch === false) {
-        result.push(`⚠️ ВНИМАНИЕ: Вариант требует указания генотипа`);
     }
-    
     if (finalMatch.cirrhosisMatch === true) {
         matches.push(`✅ Состояние печени соответствует`);
     }
-    
     if (finalMatch.transplantMatch === true) {
         matches.push(`✅ Статус трансплантации соответствует`);
     }
@@ -308,10 +223,8 @@ function generate_universal_explanation(patient_data, knowledge_base) {
         result.push("**Соответствия:**");
         matches.forEach(m => result.push(`• ${m}`));
     }
-    
     result.push("");
     
-    // Другие варианты
     if (otherVariants.length > 0) {
         result.push("📋 **ДРУГИЕ ПОДХОДЯЩИЕ ВАРИАНТЫ:**");
         otherVariants.slice(0, 3).forEach((variant, idx) => {
@@ -320,7 +233,6 @@ function generate_universal_explanation(patient_data, knowledge_base) {
         result.push("");
     }
     
-    // Рекомендации
     result.push("💊 **РЕКОМЕНДАЦИЯ ИЗ БАЗЫ ЗНАНИЙ:**");
     result.push(`**Вариант:** ${finalMatch.variantName}`);
     result.push("");
@@ -328,7 +240,6 @@ function generate_universal_explanation(patient_data, knowledge_base) {
     const instruction = finalMatch.instruction;
     let hasSpecificRecommendations = false;
     
-    // Извлекаем лечение
     if (instruction) {
         for (const instKey in instruction) {
             const inst = instruction[instKey];
@@ -366,6 +277,49 @@ function generate_universal_explanation(patient_data, knowledge_base) {
         result.push("3. Контролировать состояние в динамике");
         result.push("");
     }
+    
+    // ===== СОХРАНЯЕМ ДАННЫЕ ДЛЯ ДЕТАЛЬНОГО АНАЛИЗА (С ЛЕЧЕНИЕМ ДЛЯ КАЖДОГО ВАРИАНТА) =====
+    
+    // Функция для извлечения лечения из инструкции варианта
+    function extractTreatmentsForVariant(variantInstruction) {
+        const treatmentsList = [];
+        if (!variantInstruction) return treatmentsList;
+        
+        for (const instKey in variantInstruction) {
+            const inst = variantInstruction[instKey];
+            const treatmentPlan = inst["План лечебных действий"];
+            if (treatmentPlan && treatmentPlan["вариант лечения"]) {
+                const extracted = extractUniversalTreatments(treatmentPlan);
+                treatmentsList.push(...extracted);
+            }
+        }
+        return treatmentsList;
+    }
+    
+    window.lastStructuredData = {
+        diagnosis: patientDiagnosis,
+        patientData: patient_data,
+        selectedVariant: {
+            name: finalMatch.variantName,
+            score: finalMatch.matchScore,
+            nodeType: finalMatch.nodeType,
+            matches: matches,
+            treatments: extractTreatmentsForVariant(finalMatch.instruction)
+        },
+        otherVariants: otherVariants.map(v => ({
+            name: v.variantName,
+            score: v.matchScore,
+            nodeType: v.nodeType,
+            treatments: extractTreatmentsForVariant(v.instruction)
+        })),
+        allVariants: allCheckedVariants.map(v => ({
+            name: v.variantName,
+            score: v.matchScore,
+            nodeType: v.nodeType,
+            isSelected: v === finalMatch,
+            treatments: extractTreatmentsForVariant(v.instruction)
+        }))
+    };
     
     return result.join("\n");
 }
@@ -3692,124 +3646,182 @@ function checkGenotypeMatch(recommendation, patientData) {
 }
 
 function getDetailedAnalysis() {
-    // Если нет структурированных рекомендаций, используем последнее объяснение
-    if (!window.recommendations_by_diagnosis || Object.keys(window.recommendations_by_diagnosis).length === 0) {
+    if (!window.lastStructuredData) {
         if (window.lastExplanation) {
-            return window.lastExplanation + "\n\n---\n*Детальный вид недоступен - данные не структурированы*";
+            return window.lastExplanation + "\n\n---\n*Детальный анализ не доступен*";
         }
         return "❌ Детальный анализ не доступен. Сначала выполните анализ.";
     }
     
+    const data = window.lastStructuredData;
     const result = [];
-    result.push("📊 **ДЕТАЛЬНЫЙ АНАЛИЗ ВАРИАНТОВ**");
+    
+    result.push("📊 **ДЕТАЛЬНЫЙ АНАЛИЗ**");
     result.push("");
     
-    // Информация о пациенте
-    result.push("👤 **ДАННЫЕ ПАЦИЕНТА**");
-    if (window.patientDiagnoses && window.patientDiagnoses.length > 0) {
-        result.push(`• Диагнозы: ${window.patientDiagnoses.join(', ')}`);
+    // ===== 1. ДАННЫЕ ПАЦИЕНТА =====
+    result.push("👤 **ПАЦИЕНТ**");
+    result.push(`• ${data.diagnosis}`);
+    if (data.patientData["Возраст"]) result.push(`• ${data.patientData["Возраст"]} лет`);
+    if (data.patientData["Сведения паспортные_Пол"]) {
+        result.push(`• ${data.patientData["Сведения паспортные_Пол"] === "м" ? "Мужчина" : "Женщина"}`);
     }
     
-    const patientData = window.extract_patient_data?.() || {};
-    if (patientData["Возраст"]) result.push(`• Возраст: ${patientData["Возраст"]} лет`);
-    if (patientData["Пол"]) result.push(`• Пол: ${patientData["Пол"]}`);
+    // Выводим ключевые данные пациента
+    const hr = data.patientData["Частота сердечных сокращений"];
+    if (hr) result.push(`• ЧСС: ${hr} уд/мин`);
     
-    if (patientData["Частота сердечных сокращений"]) {
-        result.push(`• ЧСС: ${patientData["Частота сердечных сокращений"]} уд/мин`);
-    }
+    const genotype = data.patientData["Анализ крови на гепатит С с определением генотипа_Результат"];
+    if (genotype) result.push(`• Генотип: ${genotype}`);
     
-    // Показываем только релевантные данные
-    const relevantFields = ["Вес", "Рост", "Температура тела", "Артериальное давление"];
-    relevantFields.forEach(field => {
-        if (patientData[field]) {
-            result.push(`• ${field}: ${patientData[field]}`);
+    result.push("");
+    
+    // ===== 2. ВСЕ РАССМОТРЕННЫЕ ВАРИАНТЫ =====
+    result.push("📋 **РАССМОТРЕННЫЕ ВАРИАНТЫ**");
+    result.push("");
+    
+    data.allVariants.forEach((variant, idx) => {
+        const isSelected = variant.isSelected;
+        const icon = isSelected ? "✅" : "📌";
+        const score = Math.round(variant.score);
+        
+        // Формат: "название (раздел базы знаний)"
+        let nodeTypeShort = variant.nodeType;
+        nodeTypeShort = nodeTypeShort.replace(" (функциональный класс)", "");
+        nodeTypeShort = nodeTypeShort.replace("Вариант течения", "Вариант течения");
+        
+        result.push(`${icon} ${idx + 1}. **${variant.name}** (${nodeTypeShort})`);
+        
+        // Процент совпадения с пояснением
+        let scoreText = "";
+        if (score >= 90) scoreText = "Отлично подходит";
+        else if (score >= 75) scoreText = "Хорошо подходит";
+        else if (score >= 60) scoreText = "Частично подходит";
+        else if (score >= 40) scoreText = "Ограниченно подходит";
+        else scoreText = "Не подходит";
+        
+        result.push(`   • Совпадение: ${scoreText} (${score}%)`);
+        
+        // ===== ЧЕГО НЕ ХВАТАЕТ ДО 100% =====
+        let missingItems = [];
+        
+        if (data.diagnosis === "Стабильная ИБС") {
+            if (hr && hr > 60) {
+                missingItems.push(`ЧСС ${hr} > целевого 60 уд/мин`);
+            }
+            if (score === 60 && !isSelected && variant.name.includes("приступ")) {
+                missingItems.push(`отсутствуют жалобы на боль в грудной клетке`);
+            }
         }
+        
+        if (data.diagnosis === "Хронический вирусный гепатит C") {
+            if (!data.patientData["Цирроз печени"] || data.patientData["Цирроз печени"] === "") {
+                missingItems.push(`не указано наличие цирроза`);
+            }
+            if (!data.patientData["Трансплантация печени"] || data.patientData["Трансплантация печени"] === "") {
+                missingItems.push(`не указана трансплантация печени`);
+            }
+        }
+        
+        if (missingItems.length > 0) {
+            result.push(`   • ⚠️ Требуется уточнение: ${missingItems.join(", ")}`);
+        }
+        
+        // ===== ПРИЧИНЫ ВЫБОРА (для основного варианта) =====
+        if (isSelected) {
+            let reasons = [];
+            
+            if (data.diagnosis === "Стабильная ИБС") {
+                if (hr && hr <= 90) {
+                    reasons.push("отсутствие острого приступа");
+                    reasons.push("стабильное течение стенокардии");
+                }
+                if (variant.name.includes("I–II ФК")) {
+                    reasons.push("соответствие функциональному классу I–II");
+                }
+            }
+            
+            if (data.diagnosis === "Хронический вирусный гепатит C") {
+                if (variant.genotypeMatch === true) reasons.push("генотип соответствует");
+                if (variant.cirrhosisMatch === true) reasons.push("состояние печени соответствует");
+                if (variant.transplantMatch === true) reasons.push("статус трансплантации соответствует");
+                if (variant.pvtMatch === true) reasons.push("опыт ПВТ соответствует");
+            }
+            
+            // Если нет специфических причин, добавляем общие
+            if (reasons.length === 0 && data.selectedVariant.matches && data.selectedVariant.matches.length > 0) {
+                data.selectedVariant.matches.forEach(m => {
+                    let cleanMatch = m.replace(/^[✅❌⚠️•]\s*/, "");
+                    reasons.push(cleanMatch);
+                });
+            }
+            
+            if (reasons.length > 0) {
+                result.push(`   • ✅ Причины выбора:`);
+                reasons.forEach(r => result.push(`     - ${r}`));
+            }
+        }
+        
+        // ===== ПРИЧИНЫ ОТКЛОНЕНИЯ (для альтернативных вариантов) =====
+        if (!isSelected) {
+            if (variant.name.includes("приступ") && data.diagnosis === "Стабильная ИБС") {
+                result.push(`   • ❌ Не выбран: отсутствуют жалобы на боль в грудной клетке`);
+            } else if (score < 60) {
+                result.push(`   • ❌ Не выбран: низкое совпадение (${score}%)`);
+            } else if (score >= 60 && score < 90) {
+                result.push(`   • ⚠️ Альтернативный вариант (может применяться при противопоказаниях)`);
+            } else if (score >= 90) {
+                result.push(`   • ⚠️ Высокое совпадение, но выбран более специфичный вариант`);
+            }
+        }
+        
+        // ===== ЛЕЧЕНИЕ ДЛЯ КАЖДОГО ВАРИАНТА =====
+        let variantTreatments = [];
+        
+        if (isSelected && data.selectedVariant.treatments && data.selectedVariant.treatments.length > 0) {
+            variantTreatments = data.selectedVariant.treatments;
+        } else if (!isSelected && variant.treatments && variant.treatments.length > 0) {
+            variantTreatments = variant.treatments;
+        }
+        
+        if (variantTreatments.length > 0) {
+            result.push(`   • 💊 Лечение:`);
+            variantTreatments.slice(0, 3).forEach(t => {
+                let clean = t.replace(/\*\*/g, '').trim();
+                if (clean.length > 70) clean = clean.substring(0, 70) + "...";
+                result.push(`     - ${clean}`);
+            });
+            if (variantTreatments.length > 3) {
+                result.push(`     - и еще ${variantTreatments.length - 3}...`);
+            }
+        }
+        
+        result.push("");
     });
     
-    if (window.patientDiagnoses && window.patientDiagnoses.some(d => 
-    d.toLowerCase().includes('гепатит') || d.toLowerCase().includes('hcv'))) {
-    const genotype = findGenotypeInPatientData(patientData);
-    if (genotype) {
-        result.push(`• Генотип HCV: ${genotype}`);
+    // ===== 3. РЕКОМЕНДАЦИИ ВРАЧУ =====
+    result.push("📋 **РЕКОМЕНДАЦИИ ВРАЧУ**");
+    
+    if (data.diagnosis === "Стабильная ИБС") {
+        if (hr && hr > 60) {
+            result.push(`• Целевой уровень ЧСС: менее 60 уд/мин (текущий: ${hr})`);
+            result.push("• Рекомендуется титрование дозы бета-блокатора");
+        }
+        result.push("• Контроль артериального давления");
+        result.push("• Оценка липидного профиля");
+    } else if (data.diagnosis === "Хронический вирусный гепатит C") {
+        result.push("• Перед началом терапии оценить функцию печени");
+        result.push("• Контроль вирусной нагрузки через 4 и 12 недель");
+        result.push("• Мониторинг побочных эффектов");
     } else {
-        result.push(`• Генотип HCV: не указан (необходимо определить для лечения)`);
+        result.push("• Проверить противопоказания к рекомендованным препаратам");
+        result.push("• Учесть сопутствующие заболевания пациента");
+        result.push("• Определить индивидуальные дозировки");
     }
-}
     
     result.push("");
-    
-    // Детальные рекомендации по диагнозам
-    for (const [diagnosis, recs] of Object.entries(window.recommendations_by_diagnosis)) {
-        result.push(`🔍 **${diagnosis.toUpperCase()}:**`);
-        result.push("");
-        
-        recs.forEach((rec, idx) => {
-            const confidence = translateScore(rec.match_score);
-            result.push(`${idx + 1}. **${rec.variant_name}**`);
-            result.push(`   • Совпадение: ${confidence} (${Math.round(rec.match_score)}%)`);
-            
-            // Критерии пациента из базы знаний
-            if (rec.explanations && rec.explanations.length > 0) {
-                result.push(`   • Критерии пациента:`);
-                rec.explanations.forEach(exp => {
-                    // Убираем эмодзи для чистого отображения
-                    const cleanExp = exp.replace(/[✅❌⚠️]/g, '').trim();
-                    if (cleanExp) result.push(`     - ${cleanExp}`);
-                });
-            }
-            
-            // Лечение - ИСПРАВЛЕННАЯ ЧАСТЬ
-            if (rec.treatments && rec.treatments.length > 0) {
-                result.push(`   • Рекомендуемое лечение:`);
-                
-                // Счетчик для нумерации пунктов лечения
-                let treatmentCounter = 1;
-                
-                rec.treatments.forEach((treatment) => {
-                    if (typeof treatment === 'string') {
-                        // Убираем маркдаун для чистого отображения
-                        const cleanTreatment = treatment.replace(/\*\*/g, '').trim();
-                        result.push(`     ${treatmentCounter}. ${cleanTreatment}`);
-                        treatmentCounter++;
-                    } else if (treatment.text) {
-                        // Для объектов с полем text
-                        const cleanTreatment = treatment.text.replace(/\*\*/g, '').trim();
-                        result.push(`     ${treatmentCounter}. ${cleanTreatment}`);
-                        
-                        // Добавляем детали, если они есть
-                        if (treatment.details && treatment.details.length > 0) {
-                            treatment.details.forEach(detail => {
-                                if (detail && typeof detail === 'string' && detail !== treatment.text) {
-                                    const cleanDetail = detail.replace(/\*\*/g, '').trim();
-                                    result.push(`       • ${cleanDetail}`);
-                                }
-                            });
-                        }
-                        treatmentCounter++;
-                    }
-                });
-            } else {
-                result.push(`   • Лечение: информация о лечении не извлечена из базы знаний`);
-            }
-            
-            if (rec.critical_mismatch) {
-                result.push(`   • ⚠️ Критическое несоответствие критериям`);
-            }
-            
-            result.push(""); // Пустая строка между вариантами
-        });
-    }
-    
-    // Дополнительная информация
-    result.push("📋 **ИНФОРМАЦИЯ ДЛЯ ВРАЧА:**");
-    result.push("1. Проверить противопоказания к рекомендованным препаратам");
-    result.push("2. Учесть сопутствующие заболевания пациента");
-    result.push("3. Определить индивидуальные дозировки");
-    result.push("4. Назначить контроль эффективности лечения");
-    result.push("5. Рассмотреть немедикаментозные методы лечения");
-    
     result.push("---");
-    result.push("*Для возврата к краткому виду нажмите 'Скрыть детали'*");
+    result.push("*Для возврата к краткому виду нажмите «Вернуться к анализу»*");
     
     return result.join("\n");
 }
