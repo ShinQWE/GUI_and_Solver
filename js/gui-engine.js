@@ -1455,6 +1455,9 @@ function saveAllData() {
     const ibData = outputData["История болезни или наблюдений v.4"][ibId];
     const structuredData = {};
 
+    // Множество для отслеживания уже сохранённых полей
+    const savedFields = new Set();
+
     // Создаем структуру для каждого раздела
     for (const tabName in allTabsData) {
         const tabData = allTabsData[tabName];
@@ -1468,10 +1471,7 @@ function saveAllData() {
         const sectionData = {};
         let hasDataInSection = false;
         
-        // ===== ИСПРАВЛЕНИЕ: Сохраняем ТОЛЬКО иерархические данные =====
-        // Плоские данные (tabData.data) НЕ сохраняем, так как они дублируют иерархические
-        
-        // 1. Обрабатываем иерархические данные (это основные данные)
+        // ===== 1. Сохраняем ИЕРАРХИЧЕСКИЕ данные (основной источник) =====
         if (tabData.hierarchicalData && Object.keys(tabData.hierarchicalData).length > 0) {
             for (const parentField in tabData.hierarchicalData) {
                 const parentData = tabData.hierarchicalData[parentField];
@@ -1479,6 +1479,13 @@ function saveAllData() {
                 if (!parentData || Object.keys(parentData).length === 0) {
                     continue;
                 }
+                
+                // Проверяем, не сохраняли ли уже это поле
+                const parentKey = `${tabName}_${parentField}`;
+                if (savedFields.has(parentKey)) {
+                    continue;
+                }
+                savedFields.add(parentKey);
                 
                 // Если это объект с подполями
                 if (typeof parentData === 'object' && !Array.isArray(parentData)) {
@@ -1492,6 +1499,13 @@ function saveAllData() {
                             (Array.isArray(subValue) && subValue.length === 0)) {
                             continue;
                         }
+                        
+                        // Проверяем, не сохраняли ли уже это подполе
+                        const subKey = `${tabName}_${parentField}_${subField}`;
+                        if (savedFields.has(subKey)) {
+                            continue;
+                        }
+                        savedFields.add(subKey);
                         
                         let subFieldType = "Текстовое";
                         let subFieldValueStr;
@@ -1550,7 +1564,55 @@ function saveAllData() {
             }
         }
         
-        // 2. Сохраняем раздел только если есть данные
+        // ===== 2. Сохраняем ПЛОСКИЕ данные (только те, что ещё не сохранены) =====
+        for (const fieldName in tabData.data) {
+            const fieldValue = tabData.data[fieldName];
+            
+            if (fieldValue === null || fieldValue === undefined || 
+                (Array.isArray(fieldValue) && fieldValue.length === 0)) {
+                continue;
+            }
+            
+            // Проверяем, не сохранено ли уже это поле через иерархические данные
+            const flatKey = `${tabName}_${fieldName}`;
+            if (savedFields.has(flatKey)) {
+                console.log(`⚠️ Пропускаем дубль: ${fieldName}`);
+                continue;
+            }
+            
+            let fieldType = "Текстовое";
+            let fieldValueStr;
+            
+            if (Array.isArray(fieldValue)) {
+                fieldType = "Множественный выбор";
+                fieldValueStr = fieldValue.join(', ');
+            } else if (typeof fieldValue === 'number') {
+                fieldType = "Числовое";
+                fieldValueStr = String(fieldValue);
+            } else if (typeof fieldValue === 'boolean') {
+                fieldType = "Логическое";
+                fieldValueStr = fieldValue ? "да" : "нет";
+            } else {
+                fieldType = "Текстовое";
+                fieldValueStr = String(fieldValue);
+            }
+            
+            // Проверяем, не является ли это поле частью иерархических данных
+            // Например, "Терапия в настоящее время" может быть и плоским, и иерархическим
+            const isPartOfHierarchy = tabData.hierarchicalData && 
+                (tabData.hierarchicalData[fieldName] !== undefined);
+            
+            if (!isPartOfHierarchy) {
+                sectionData[fieldName] = {
+                    "Тип": fieldType,
+                    "Значение": fieldValueStr
+                };
+                hasDataInSection = true;
+                savedFields.add(flatKey);
+            }
+        }
+        
+        // Сохраняем раздел только если есть данные
         if (hasDataInSection) {
             structuredData[tabName] = sectionData;
         }
