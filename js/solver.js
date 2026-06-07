@@ -3955,6 +3955,56 @@ function showAnalysisResults(explanation, patientData) {
         .replace(/❌/g, '<span style="color: #e74c3c;">❌</span>')
         .replace(/\•/g, '•');
     
+    // Получаем все введённые данные
+    const allEnteredData = window.extract_patient_data();
+    
+    // Определяем, какие поля НЕ были использованы в анализе
+    const usedFields = [];
+    if (window.lastStructuredData) {
+        // Поля, которые использовались в анализе (диагноз, возраст, пол и т.д.)
+        if (patientData["Клинический диагноз"]) usedFields.push("Клинический диагноз");
+        if (patientData["Возраст"]) usedFields.push("Возраст");
+        if (patientData["Сведения паспортные_Пол"]) usedFields.push("Сведения паспортные_Пол");
+        if (patientData["Пол"]) usedFields.push("Пол");
+        if (patientData["Частота сердечных сокращений"]) usedFields.push("Частота сердечных сокращений");
+        if (patientData["Психотическая симптоматика"]) usedFields.push("Психотическая симптоматика");
+        if (patientData["Чувствительность к развитию ЭПC"]) usedFields.push("Чувствительность к развитию ЭПC");
+        if (patientData["Анализ крови на гепатит С с определением генотипа_Результат"]) usedFields.push("Генотип");
+    }
+    
+    // Дополнительные поля (не использованные в анализе)
+    const additionalFields = Object.keys(allEnteredData).filter(key => 
+        !usedFields.includes(key) && 
+        key !== "Клинический диагноз" &&
+        allEnteredData[key] !== null &&
+        allEnteredData[key] !== undefined &&
+        allEnteredData[key] !== ""
+    );
+    
+    // Создаём HTML для дополнительных полей
+    let additionalFieldsHtml = "";
+    if (additionalFields.length > 0) {
+        let fieldsList = "";
+        additionalFields.forEach(field => {
+            let value = allEnteredData[field];
+            if (Array.isArray(value)) value = value.join(", ");
+            let fieldName = field.replace(/_/g, " ").replace(/Опыт терапии Опыт терапии /g, "Опыт терапии: ");
+            fieldsList += `<div style="margin-bottom: 5px;">• <strong>${fieldName}:</strong> ${value}</div>`;
+        });
+        
+        additionalFieldsHtml = `
+            <details style="margin-top: 15px; background: #f8f9fa; padding: 10px; border-radius: 5px;">
+                <summary style="cursor: pointer; color: #666; font-weight: bold;">📋 Дополнительные данные (не влияют на анализ)</summary>
+                <div style="margin-top: 10px; padding: 10px; background: #fff; border-radius: 5px; border: 1px solid #eee;">
+                    ${fieldsList}
+                    <div style="margin-top: 8px; font-size: 12px; color: #999;">
+                        ⚠️ Эти данные сохранены в истории болезни, но не используются для выбора лечения при данном диагнозе
+                    </div>
+                </div>
+            </details>
+        `;
+    }
+    
     analysisResultsDiv.innerHTML = `
         <div class="analysis-result" style="font-family: Arial, sans-serif; line-height: 1.6;">
             <div style="
@@ -3971,6 +4021,8 @@ function showAnalysisResults(explanation, patientData) {
                 ">
                     ${htmlExplanation}
                 </div>
+                
+                ${additionalFieldsHtml}
                 
                 <div style="text-align: center; margin-top: 20px;">
                     <button onclick="toggleDetailedView()" class="toggle-btn" 

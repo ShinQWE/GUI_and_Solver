@@ -1465,47 +1465,13 @@ function saveAllData() {
             continue;
         }
         
-        // Создаем объект для раздела (БЕЗ "Общие данные")
         const sectionData = {};
         let hasDataInSection = false;
         
-        // 1. Обрабатываем простые поля (не иерархические)
-        for (const fieldName in tabData.data) {
-            const fieldValue = tabData.data[fieldName];
-            
-            if (fieldValue === null || fieldValue === undefined || 
-                (Array.isArray(fieldValue) && fieldValue.length === 0)) {
-                continue;
-            }
-            
-            // Определяем тип поля
-            let fieldType = "Текстовое";
-            let fieldValueStr;
-            
-            if (Array.isArray(fieldValue)) {
-                fieldType = "Множественный выбор";
-                fieldValueStr = fieldValue.join(', ');
-            } else if (typeof fieldValue === 'number') {
-                fieldType = "Числовое";
-                fieldValueStr = String(fieldValue);
-            } else if (typeof fieldValue === 'boolean') {
-                fieldType = "Логическое";
-                fieldValueStr = fieldValue ? "да" : "нет";
-            } else {
-                fieldType = "Текстовое";
-                fieldValueStr = String(fieldValue);
-            }
-            
-            // Сохраняем поле напрямую в раздел (без "Общие данные")
-            sectionData[fieldName] = {
-                "Тип": fieldType,
-                "Значение": fieldValueStr
-            };
-            
-            hasDataInSection = true;
-        }
+        // ===== ИСПРАВЛЕНИЕ: Сохраняем ТОЛЬКО иерархические данные =====
+        // Плоские данные (tabData.data) НЕ сохраняем, так как они дублируют иерархические
         
-        // 2. Обрабатываем иерархические данные
+        // 1. Обрабатываем иерархические данные (это основные данные)
         if (tabData.hierarchicalData && Object.keys(tabData.hierarchicalData).length > 0) {
             for (const parentField in tabData.hierarchicalData) {
                 const parentData = tabData.hierarchicalData[parentField];
@@ -1527,7 +1493,6 @@ function saveAllData() {
                             continue;
                         }
                         
-                        // Определяем тип подполя
                         let subFieldType = "Текстовое";
                         let subFieldValueStr;
                         
@@ -1552,7 +1517,6 @@ function saveAllData() {
                         hasSubData = true;
                     }
                     
-                    // Сохраняем иерархическое поле только если есть данные
                     if (hasSubData) {
                         sectionData[parentField] = subSectionData;
                         hasDataInSection = true;
@@ -1581,15 +1545,14 @@ function saveAllData() {
                         "Тип": fieldType,
                         "Значение": fieldValueStr
                     };
-                    
                     hasDataInSection = true;
                 }
             }
         }
         
-        // Сохраняем раздел только если есть данные
+        // 2. Сохраняем раздел только если есть данные
         if (hasDataInSection) {
-            structuredData[tabName] = sectionData; // БЕЗ "Общие данные"!
+            structuredData[tabName] = sectionData;
         }
     }
     
