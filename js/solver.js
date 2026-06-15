@@ -1222,35 +1222,169 @@ function showMissingFieldsPanel(missingFields) {
 function highlightMissingFieldsByList(missingFields) { missingFields.forEach(field => { highlightFieldByName(field.displayName); }); }
 
 function highlightFieldByName(fieldName) {
-    const fieldMapping = { 'Цирроз печени': { tab: 'Общие сведения', selectors: ['Сопутствующий диагноз', 'сопутствующий диагноз'] }, 'Генотип вируса': { tab: 'Сведения в динамике', selectors: ['Анализ крови на гепатит С с определением генотипа', 'генотип'] }, 'Опыт противовирусной терапии (ПВТ)': { tab: 'Сведения в динамике', selectors: ['Опыт терапии', 'ПВТ'] }, 'Трансплантация печени': { tab: 'Общие сведения', selectors: ['Операции в прошлом', 'трансплантация'] }, 'Локализация перелома': { tab: 'Расширенный клинический диагноз', selectors: ['Локализация', 'локализация'] }, 'Тип повреждения': { tab: 'Расширенный клинический диагноз', selectors: ['Тип повреждения', 'тип повреждения'] }, 'Выраженность приступа': { tab: 'Жалобы', selectors: ['Приступ мигрени', 'Выраженность'] } };
-    const mapping = fieldMapping[fieldName];
-    if (!mapping) return;
-    switchToTab(mapping.tab);
-    setTimeout(() => {
-        const activeContent = document.querySelector('.tab-contents');
-        if (!activeContent) return;
-        for (const selector of mapping.selectors) {
-            let element = null;
-            element = activeContent.querySelector(`[name*="${selector}" i]`);
-            if (!element) {
-                const labels = activeContent.querySelectorAll('label');
-                for (const label of labels) {
-                    if (label.textContent.toLowerCase().includes(selector.toLowerCase())) { const parent = label.parentElement; element = parent.querySelector('input, select, textarea'); break; }
-                }
+    if (!fieldName) {
+        console.log("❌ Имя поля не указано");
+        return;
+    }
+    
+    console.log(`🔍 Ищем поле: "${fieldName}"`);
+    
+    // Нормализуем имя для поиска (убираем лишние пробелы, приводим к нижнему регистру)
+    const searchName = fieldName.toLowerCase().trim();
+    
+    // Получаем все вкладки
+    const headers = document.querySelectorAll('.tab-header');
+    let found = false;
+    
+    // Функция подсветки элемента
+    function highlightElement(element) {
+        if (!element) return;
+        
+        const originalBorder = element.style.border;
+        const originalBg = element.style.backgroundColor;
+        const originalOutline = element.style.outline;
+        
+        element.style.transition = 'all 0.3s ease';
+        element.style.border = '2px solid #ff9800';
+        element.style.backgroundColor = '#fff3e0';
+        element.style.outline = '2px solid #ff9800';
+        element.style.boxShadow = '0 0 8px rgba(255, 152, 0, 0.5)';
+        
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        
+        // 3 моргания для привлечения внимания
+        let blinkCount = 0;
+        const blinkInterval = setInterval(() => {
+            if (blinkCount >= 6) {
+                clearInterval(blinkInterval);
+                element.style.border = originalBorder;
+                element.style.backgroundColor = originalBg;
+                element.style.outline = originalOutline;
+                element.style.boxShadow = '';
+                return;
             }
-            if (element) {
-                const originalBorder = element.style.border;
-                const originalBg = element.style.backgroundColor;
-                element.style.transition = 'all 0.3s ease';
-                element.style.border = '2px solid #ff9800';
+            if (blinkCount % 2 === 0) {
                 element.style.backgroundColor = '#fff3e0';
-                element.style.boxShadow = '0 0 5px rgba(255, 152, 0, 0.5)';
-                element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                setTimeout(() => { element.style.border = originalBorder; element.style.backgroundColor = originalBg; element.style.boxShadow = ''; }, 3000);
+                element.style.border = '2px solid #ff9800';
+            } else {
+                element.style.backgroundColor = originalBg;
+                element.style.border = originalBorder;
+            }
+            blinkCount++;
+        }, 300);
+    }
+    
+    // Функция поиска в конкретной вкладке
+    function searchInTab(tabName, callback) {
+        // Переключаемся на вкладку
+        for (const header of headers) {
+            if (header.innerText.trim() === tabName) {
+                header.click();
                 break;
             }
         }
-    }, 200);
+        
+        // Даем время на рендер
+        setTimeout(() => {
+            const activeContent = document.querySelector('.tab-contents');
+            if (!activeContent) {
+                callback(null);
+                return;
+            }
+            
+            // 1. Ищем по атрибуту name
+            const allInputs = activeContent.querySelectorAll('input[name], select[name], textarea[name]');
+            for (const input of allInputs) {
+                const inputName = input.name.toLowerCase();
+                if (inputName === searchName || 
+                    inputName.includes(searchName) || 
+                    searchName.includes(inputName)) {
+                    callback(input);
+                    return;
+                }
+            }
+            
+            // 2. Ищем по label (текст метки)
+            const labels = activeContent.querySelectorAll('label');
+            for (const label of labels) {
+                const labelText = label.textContent.toLowerCase().trim();
+                // Убираем двоеточие и лишнее
+                const cleanLabel = labelText.replace(/[:\s]+$/, '');
+                if (cleanLabel === searchName || 
+                    cleanLabel.includes(searchName) || 
+                    searchName.includes(cleanLabel)) {
+                    // Ищем связанный input
+                    const parent = label.parentElement;
+                    const input = parent.querySelector('input, select, textarea');
+                    if (input) {
+                        callback(input);
+                        return;
+                    }
+                    // Ищем по id
+                    const forId = label.getAttribute('for');
+                    if (forId) {
+                        const inputById = document.getElementById(forId);
+                        if (inputById) {
+                            callback(inputById);
+                            return;
+                        }
+                    }
+                }
+            }
+            
+            // 3. Ищем по placeholder
+            const allPlaceholders = activeContent.querySelectorAll('[placeholder]');
+            for (const el of allPlaceholders) {
+                const placeholder = el.getAttribute('placeholder').toLowerCase();
+                if (placeholder.includes(searchName)) {
+                    callback(el);
+                    return;
+                }
+            }
+            
+            // 4. Ищем по тексту в div или span (для мультиселектов)
+            const allTextElements = activeContent.querySelectorAll('div, span, button');
+            for (const el of allTextElements) {
+                const text = el.textContent.toLowerCase().trim();
+                if (text === searchName || text.includes(searchName)) {
+                    // Ищем ближайший контейнер с input
+                    const parent = el.closest('.multi-select-dropdown, .characteristic-field, .observation-section');
+                    if (parent) {
+                        const input = parent.querySelector('input, select, button');
+                        if (input) {
+                            callback(input);
+                            return;
+                        }
+                    }
+                    callback(el);
+                    return;
+                }
+            }
+            
+            callback(null);
+        }, 200);
+    }
+    
+    // Перебираем все вкладки в поисках поля
+    for (const header of headers) {
+        const tabName = header.innerText.trim();
+        searchInTab(tabName, (element) => {
+            if (element && !found) {
+                found = true;
+                highlightElement(element);
+                window.showNotification?.(`🔍 Поле "${fieldName}" найдено и подсвечено!`, "success");
+            }
+        });
+        if (found) break;
+    }
+    
+    // Если не нашли
+    setTimeout(() => {
+        if (!found) {
+            console.log(`❌ Поле "${fieldName}" не найдено ни в одной вкладке`);
+            window.showNotification?.(`❌ Поле "${fieldName}" не найдено. Заполните его вручную.`, "error");
+        }
+    }, 3000);
 }
 
 function switchToTab(tabName) {
