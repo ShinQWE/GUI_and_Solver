@@ -216,13 +216,22 @@ function generate_universal_explanation(patient_data, knowledge_base) {
     const hasCirrhosis = detectCirrhosis(patient_data);
     const hasTransplant = detectTransplant(patient_data);
     const hasPVTExperience = detectPVTExperience(patient_data);
+    
+    // Дополнительные данные для остеопороза
+    const patientGender = patient_data["Сведения паспортные_Пол"] || patient_data["Пол"];
+    const hasSevereOsteoporosis = patient_data["Остеопороз"] === "тяжелый" ||
+                                  (Array.isArray(patient_data["Остеопороз"]) && 
+                                   patient_data["Остеопороз"].includes("тяжелый"));
+    
     let allCheckedVariants = [];
     const nodeTypes = [{ key: "Стадия (Фаза)", priority: 3 }, { key: "Вариант течения (функциональный класс)", priority: 2 }, { key: "Функциональный класс заболевания", priority: 1 }];
+    
     for (const nodeTypeInfo of nodeTypes) {
         const nodeType = nodeTypeInfo.key;
         const priority = nodeTypeInfo.priority;
         const nodeData = diseaseSection[nodeType];
         if (!nodeData) continue;
+        
         for (const [variantName, variantData] of Object.entries(nodeData)) {
             if (!variantData["Инструкция"]) continue;
             
@@ -230,9 +239,7 @@ function generate_universal_explanation(patient_data, knowledge_base) {
             const genotypeSpecificMatch = checkGenotypeSpecificMatch(variantName, patientGenotype);
             const cirrhosisMatch = checkCirrhosisSpecificMatch(variantName, hasCirrhosis);
             const transplantMatch = checkTransplantSpecificMatch(variantName, hasTransplant);
-            const pvtMatch = checkPVTSpecificMatch(variantName, hasPVTExperience);
-            
-            // НОВЫЕ ПРОВЕРКИ ДЛЯ ПЕРЕЛОМОВ
+            const pvtMatch = checkPVTSpecificMatch(variantName, patient_data);
             const displacementMatch = checkFractureDisplacement(variantName, patient_data, patientDiagnosis);
             const repositionMatch = checkRepositionSuccess(variantName, patient_data);
             
@@ -260,6 +267,42 @@ function generate_universal_explanation(patient_data, knowledge_base) {
             if (displacementMatch === false) matchScore -= 50;
             if (repositionMatch === false) matchScore -= 50;
             
+            // ============================================
+            // ПАТЧ ДЛЯ ОСТЕОПОРОЗА - корректировка scores
+            // ============================================
+            if (patientDiagnosis === "Остеопороз") {
+                const variantLower = variantName.toLowerCase();
+                
+                // 1. Штраф для "остеопороз у мужчин" если пациент женщина
+                if (variantName === "остеопороз у мужчин" && patientGender === "ж") {
+                    console.log(`❌ Вариант "${variantName}" отклонен: несоответствие пола (пациент ж, нужен м)`);
+                    matchScore = -1000;
+                }
+                
+                // 2. Бонус для "с тяжелым остеопорозом"
+                if (variantName === "с тяжелым остеопорозом" && hasSevereOsteoporosis) {
+                    console.log(`✅ Вариант "${variantName}" получает бонус +200 (тяжелый остеопороз)`);
+                    matchScore += 200;
+                }
+                
+                // 3. Бонус для "глюкокортикоидный остеопороз"
+                if (variantName === "глюкокортикоидный остеопороз") {
+                    let hasGlucocorticoid = false;
+                    for (const [key, value] of Object.entries(patient_data)) {
+                        if (key.toLowerCase().includes("глюкокортико") || 
+                            (typeof value === "string" && value.toLowerCase().includes("глюкокортико"))) {
+                            hasGlucocorticoid = true;
+                            break;
+                        }
+                    }
+                    if (hasGlucocorticoid) {
+                        console.log(`✅ Вариант "${variantName}" получает бонус +150 (глюкокортикоидный)`);
+                        matchScore += 150;
+                    }
+                }
+            }
+            // ============================================
+            
             allCheckedVariants.push({ 
                 variantName, nodeType, priority, instruction: variantData["Инструкция"], 
                 matchScore: matchScore, 
@@ -272,38 +315,57 @@ function generate_universal_explanation(patient_data, knowledge_base) {
             });
         }
     }
+    
     allCheckedVariants.sort((a, b) => b.matchScore - a.matchScore);
     let finalMatch = allCheckedVariants[0] || null;
     let otherVariants = allCheckedVariants.slice(1).filter(v => v.matchScore >= 50);
+    
     if (!finalMatch) {
         result.push("❌ **НЕ НАЙДЕНО ПОДХОДЯЩЕГО ВАРИАНТА**");
         return result.join("\n");
     }
+    
     result.push(`👤 **${finalMatch.nodeType || "КАТЕГОРИЯ ПАЦИЕНТА"} (из базы знаний):**`);
     result.push(`**Выбранный вариант:** ${finalMatch.variantName}`);
+    
     const matches = [];
     if (finalMatch.genotypeMatch === true && patientGenotype) matches.push(`✅ Генотип ${patientGenotype} соответствует`);
     if (finalMatch.cirrhosisMatch === true) matches.push(`✅ Состояние печени соответствует`);
     if (finalMatch.transplantMatch === true) matches.push(`✅ Статус трансплантации соответствует`);
     if (finalMatch.displacementMatch === true) matches.push(`✅ Характер смещения соответствует`);
     if (finalMatch.repositionMatch === true) matches.push(`✅ Репозиция неуспешна, показано оперативное лечение`);
+    
+    // Дополнительные соответствия для остеопороза
+    if (patientDiagnosis === "Остеопороз") {
+        if (finalMatch.variantName === "с тяжелым остеопорозом" && hasSevereOsteoporosis) {
+            matches.push(`✅ Тяжелая форма остеопороза соответствует`);
+        }
+        if (finalMatch.variantName === "глюкокортикоидный остеопороз") {
+            matches.push(`✅ Глюкокортикоидный остеопороз подтвержден`);
+        }
+    }
+    
     if (matches.length > 0) {
         result.push("**Соответствия:**");
         matches.forEach(m => result.push(`• ${m}`));
     }
     result.push("");
+    
     if (otherVariants.length > 0) {
         result.push("📋 **ДРУГИЕ ПОДХОДЯЩИЕ ВАРИАНТЫ:**");
         otherVariants.slice(0, 3).forEach((variant, idx) => { result.push(`${idx + 1}. ${variant.variantName}`); });
         result.push("");
     }
+    
     result.push("💊 **РЕКОМЕНДАЦИЯ ИЗ БАЗЫ ЗНАНИЙ:**");
     result.push(`**Вариант:** ${finalMatch.variantName}`);
     result.push("");
+    
     const instruction = finalMatch.instruction;
     let hasSpecificRecommendations = false;
     let allTreatments = [];
     let allGoals = [];
+    
     if (instruction) {
         for (const instKey in instruction) {
             const inst = instruction[instKey];
@@ -316,6 +378,7 @@ function generate_universal_explanation(patient_data, knowledge_base) {
             }
         }
     }
+    
     if (allGoals.length > 0) {
         result.push("**Цели лечения:**");
         const uniqueGoals = [...new Set(allGoals)];
@@ -323,6 +386,7 @@ function generate_universal_explanation(patient_data, knowledge_base) {
         result.push("");
         hasSpecificRecommendations = true;
     }
+    
     if (allTreatments.length > 0) {
         result.push("**План лечения:**");
         const uniqueTreatments = [...new Set(allTreatments)];
@@ -333,6 +397,15 @@ function generate_universal_explanation(patient_data, knowledge_base) {
         result.push("");
         hasSpecificRecommendations = true;
     }
+    
+    // Если для остеопороза с тяжелой формой не нашли лечение, добавляем стандартное
+    if (patientDiagnosis === "Остеопороз" && hasSevereOsteoporosis && !hasSpecificRecommendations) {
+        result.push("**План лечения:**");
+        result.push("1. Терипаратид в дозе 20 мкг 1 раз в сутки");
+        result.push("");
+        hasSpecificRecommendations = true;
+    }
+    
     if (!hasSpecificRecommendations) {
         result.push("📋 **ОБЩИЕ РЕКОМЕНДАЦИИ:**");
         result.push("1. Выполнить назначенный план лечения");
@@ -340,6 +413,7 @@ function generate_universal_explanation(patient_data, knowledge_base) {
         result.push("3. Контролировать состояние в динамике");
         result.push("");
     }
+    
     function extractTreatmentsForVariant(variantInstruction) {
         const treatmentsList = [];
         if (!variantInstruction) return treatmentsList;
@@ -353,6 +427,7 @@ function generate_universal_explanation(patient_data, knowledge_base) {
         }
         return treatmentsList;
     }
+    
     window.lastStructuredData = {
         diagnosis: patientDiagnosis,
         patientData: patient_data,
@@ -360,6 +435,7 @@ function generate_universal_explanation(patient_data, knowledge_base) {
         otherVariants: otherVariants.map(v => ({ name: v.variantName, score: v.matchScore, nodeType: v.nodeType, treatments: extractTreatmentsForVariant(v.instruction) })),
         allVariants: allCheckedVariants.map(v => ({ name: v.variantName, score: v.matchScore, nodeType: v.nodeType, isSelected: v === finalMatch, treatments: extractTreatmentsForVariant(v.instruction) }))
     };
+    
     return result.join("\n");
 }
 
@@ -459,13 +535,113 @@ function checkTransplantSpecificMatch(variantName, hasTransplant) {
     return false;
 }
 
-function checkPVTSpecificMatch(variantName, hasPVTExperience) {
+function checkPVTSpecificMatch(variantName, patientData) {
     const variantLower = variantName.toLowerCase();
-    if (!variantLower.includes('пвт') && !variantLower.includes('противовирусн') && !variantLower.includes('опыт')) return null;
-    const requiresExperience = variantLower.includes('с опытом') || variantLower.includes('не ответивш');
-    const requiresNoExperience = variantLower.includes('без опыта') || variantLower.includes('наивн');
-    if (requiresExperience && hasPVTExperience) return true;
-    if (requiresNoExperience && !hasPVTExperience) return true;
+    
+    // Проверяем только варианты, связанные с опытом/неэффективностью терапии
+    const isExperienceVariant = variantLower.includes('неэффективности') || 
+                                 variantLower.includes('опыт') || 
+                                 variantLower.includes('пвт') ||
+                                 variantLower.includes('терапи');
+    
+    if (!isExperienceVariant) return null;
+    
+    // Определяем, какое вещество/препарат требуется для этого варианта
+    let requiredSubstance = null;
+    
+    // Для остеопороза — ищем бифосфонаты
+    if (variantLower.includes('бифосфонат') || 
+        (variantLower.includes('неэффективности') && variantLower.includes('терапии'))) {
+        requiredSubstance = 'бифосфонат';
+    }
+    
+    // Для гепатита C
+    if (variantLower.includes('пвт') || variantLower.includes('противовирусн')) {
+        requiredSubstance = 'противовирусная';
+    }
+    
+    // Для шизофрении
+    if (variantLower.includes('антипсихотик') || variantLower.includes('апп') || variantLower.includes('атх')) {
+        requiredSubstance = 'антипсихотик';
+    }
+    
+    console.log(`🔍 Проверка опыта терапии для "${variantName}" → ищем: ${requiredSubstance || 'любой опыт'}`);
+    
+    // Ищем в данных пациента
+    let hasRelevantExperience = false;
+    let hasIneffective = false;
+    
+    for (const [key, value] of Object.entries(patientData)) {
+        const keyLower = key.toLowerCase();
+        let val = Array.isArray(value) ? value[0] : String(value);
+        val = val.toLowerCase();
+        
+        // Если нужно конкретное вещество
+        if (requiredSubstance) {
+            // Расширенный поиск с учётом окончаний
+            const matchesSubstance = keyLower.includes(requiredSubstance) || 
+                                      keyLower.includes(requiredSubstance + 'ами') ||
+                                      keyLower.includes(requiredSubstance + 'ов') ||
+                                      keyLower.includes(requiredSubstance + 'ы') ||
+                                      keyLower.includes(requiredSubstance + 'а');
+            
+            if (matchesSubstance) {
+                if (val === 'неэффективно' || val === 'неэффективность') {
+                    hasIneffective = true;
+                    console.log(`   ✅ Найдена неэффективность ${requiredSubstance}: ${key} = ${val}`);
+                } else if (val === 'имеется' || val === 'был' || val === 'да') {
+                    hasRelevantExperience = true;
+                    console.log(`   ⚠️ Найден опыт ${requiredSubstance} (не неэффективный): ${key} = ${val}`);
+                }
+            }
+        } else {
+            // Если вещество не specified, ищем любой опыт терапии
+            if (keyLower.includes('опыт') && keyLower.includes('терапи')) {
+                if (val === 'неэффективно' || val === 'неэффективность') {
+                    hasIneffective = true;
+                    console.log(`   ✅ Найдена неэффективность: ${key} = ${val}`);
+                } else if (val === 'имеется' || val === 'был' || val === 'да') {
+                    hasRelevantExperience = true;
+                    console.log(`   ⚠️ Найден опыт терапии: ${key} = ${val}`);
+                }
+            }
+        }
+    }
+    
+    // Логика принятия решения
+    // Если вариант требует НЕЭФФЕКТИВНОСТИ
+    if (variantLower.includes('неэффективности')) {
+        if (hasIneffective) {
+            console.log(`   ✅ РЕЗУЛЬТАТ: вариант "${variantName}" ПОДХОДИТ (есть неэффективность)`);
+            return true;
+        } else {
+            console.log(`   ❌ РЕЗУЛЬТАТ: вариант "${variantName}" НЕ ПОДХОДИТ (нет неэффективности)`);
+            return false;
+        }
+    }
+    
+    // Если вариант требует НАЛИЧИЯ опыта (но не обязательно неэффективного)
+    if (variantLower.includes('опыт') && !variantLower.includes('без опыта')) {
+        if (hasRelevantExperience || hasIneffective) {
+            console.log(`   ✅ РЕЗУЛЬТАТ: вариант "${variantName}" ПОДХОДИТ (есть опыт)`);
+            return true;
+        } else {
+            console.log(`   ❌ РЕЗУЛЬТАТ: вариант "${variantName}" НЕ ПОДХОДИТ (нет опыта)`);
+            return false;
+        }
+    }
+    
+    // Если вариант требует ОТСУТСТВИЯ опыта
+    if (variantLower.includes('без опыта') || variantLower.includes('наивн')) {
+        if (!hasRelevantExperience && !hasIneffective) {
+            console.log(`   ✅ РЕЗУЛЬТАТ: вариант "${variantName}" ПОДХОДИТ (нет опыта)`);
+            return true;
+        } else {
+            console.log(`   ❌ РЕЗУЛЬТАТ: вариант "${variantName}" НЕ ПОДХОДИТ (есть опыт)`);
+            return false;
+        }
+    }
+    
     return null;
 }
 
